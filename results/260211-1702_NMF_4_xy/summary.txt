@@ -1,1 +1,0 @@
-NMF analysis was performed with 4 components
