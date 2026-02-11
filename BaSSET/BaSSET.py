@@ -5,6 +5,7 @@ from natsort import natsorted
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
+from datetime import datetime
 
 from sklearn.decomposition import PCA, NMF, FastICA
 
@@ -18,7 +19,7 @@ if platform.system() == "Windows":
     import ctypes
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u"BaSSET")
 
-def import_data(dir, filetype, auto_filetype):
+def import_dataset(dir, filetype, auto_filetype):
     """
     Imports files from chosen directory of chosen filetype
     """
@@ -102,7 +103,7 @@ def PCA_analysis(angles, intensities, numComponents, whiten, svd_solver, tol, it
 
     fig.show()
 
-def NMF_analysis(angles, intensities, numComponents, init, solver, beta_loss, tol, max_iter):
+def NMF_analysis(angles, intensities, numComponents, init, solver, beta_loss, tol, max_iter, alpha_W, alpha_H, l1_ratio):
     n_components_list = np.arange(1, 10+1, dtype=int)
     errors = np.empty(len(n_components_list))
     X = None
@@ -110,7 +111,7 @@ def NMF_analysis(angles, intensities, numComponents, init, solver, beta_loss, to
     reconstructed = None
 
     for i, n_components in enumerate(n_components_list):
-        nmf = NMF(n_components=n_components, init=init, solver=solver, beta_loss=beta_loss, tol=tol, max_iter=max_iter)
+        nmf = NMF(n_components=n_components, init=init, solver=solver, beta_loss=beta_loss, tol=tol, max_iter=max_iter, alpha_W=alpha_W, alpha_H=alpha_H, l1_ratio=l1_ratio)
         X_temp = nmf.fit(intensities)
         errors[i] = X_temp.reconstruction_err_
         if numComponents == n_components:
@@ -224,7 +225,7 @@ class MainWindow(qtw.QMainWindow):
 
         self.setWindowIcon(qtg.QIcon(f"{self.configpath}/assets/icon.png"))
         self.setWindowTitle("Battery Signal Separation and Enhancement Toolbox")
-        self.resize(qtc.QSize(460, 360))
+        self.resize(qtc.QSize(460, 360)) # Increase to 640x480 in future?
         self.centralWidget = qtw.QWidget(self)
 
 
@@ -276,7 +277,6 @@ class MainWindow(qtw.QMainWindow):
         self.xyeButton.setGeometry(60, 130, 40, 20)
         self.xyeButton.setToolTip("XRD: three-column plain text file")
 
-
         self.datButton = qtw.QRadioButton(".dat", self.centralWidget)
         self.datButton.setGeometry(10, 150, 40, 20)
         self.datButton.setToolTip("XRD: three-column plain text file")
@@ -303,15 +303,15 @@ class MainWindow(qtw.QMainWindow):
         self.PCAButton = qtw.QRadioButton("PCA", self.centralWidget)
         self.PCAButton.setGeometry(170, 60, 40, 20)
         self.PCAButton.setChecked(True)
-        self.PCAButton.setToolTip("Principal Component Analysis")
+        self.PCAButton.setToolTip("Principal Component Analysis (scikit-learn)")
         
         self.NMFButton = qtw.QRadioButton("NMF", self.centralWidget)
         self.NMFButton.setGeometry(220, 60, 40, 20)
-        self.NMFButton.setToolTip("Non-Negative Matrix Factorization")
+        self.NMFButton.setToolTip("Non-Negative Matrix Factorization (scikit-learn)")
 
         self.ICAButton = qtw.QRadioButton("ICA", self.centralWidget)
         self.ICAButton.setGeometry(270, 60, 40, 20)
-        self.ICAButton.setToolTip("Independent Component Analysis")
+        self.ICAButton.setToolTip("Independent Component Analysis (scikit-learn)")
         
         self.ICA1Button = qtw.QRadioButton("ICA1", self.centralWidget)
         self.ICA1Button.setGeometry(170, 80, 40, 20)
@@ -321,13 +321,12 @@ class MainWindow(qtw.QMainWindow):
         self.SNMFButton = qtw.QRadioButton("SNMF", self.centralWidget)
         self.SNMFButton.setGeometry(215, 80, 50, 20)
         self.SNMFButton.setDisabled(True)
-        self.SNMFButton.setToolTip("Stretched Non-Negative Matrix Factorization")
+        self.SNMFButton.setToolTip("Stretched Non-Negative Matrix Factorization (diffpy)")
 
         self.ICA2Button = qtw.QRadioButton("ICA2", self.centralWidget)
         self.ICA2Button.setGeometry(270, 80, 40, 20)
         self.ICA2Button.setDisabled(True)
         self.ICA2Button.setToolTip("Placeholder (Not Implemented)")
-
 
         self.algorithmGroup.addButton(self.PCAButton)
         self.algorithmGroup.addButton(self.NMFButton)
@@ -335,6 +334,7 @@ class MainWindow(qtw.QMainWindow):
         self.algorithmGroup.addButton(self.ICA1Button)
         self.algorithmGroup.addButton(self.SNMFButton)
         self.algorithmGroup.addButton(self.ICA2Button)
+
 
         self.numComponentsTitle = qtw.QLabel("Number of Components", self.centralWidget)
         self.numComponentsTitle.setGeometry(185, 110, 120, 20)
@@ -367,7 +367,14 @@ class MainWindow(qtw.QMainWindow):
         self.PCAsolverDropdown = qtw.QComboBox(self.centralWidget)
         self.PCAsolverDropdown.addItems(['auto', 'full', 'covariance_eigh', 'arpack', 'randomized'])
         self.PCAsolverDropdown.setGeometry(190, 180, 105, 20)
-        self.PCAsolverDropdown.setToolTip("The type of Singular Value Decomposition solver to use")
+        self.PCAsolverDropdown.setToolTip("The type of Singular Value Decomposition solver to use:\n" \
+        "auto (default): Chooses solver based on size of dataset and number of components\n" \
+        "full: Runs exact full SVD\n" \
+        "covariance_eigh: Precomputes covarience for eigenvalue decompositon.\n" \
+        "    Efficient for many scans of few datapoints (rare for scattering)\n" \
+        "arpack: Runs SVD truncated to number of components.\n" \
+        "    Requires fewer components than number of scans\n" \
+        "randomized: Runs randomized SVD")
 
         # Only for 'arpack' solver
         self.PCAtolSpinbox = qtw.QSpinBox(self.centralWidget)
@@ -377,7 +384,7 @@ class MainWindow(qtw.QMainWindow):
         self.PCAtolSpinbox.setValue(0)
         self.PCAtolSpinbox.setSingleStep(1)
         self.PCAtolSpinbox.setGeometry(300, 180, 50, 20)
-        self.PCAtolSpinbox.setToolTip("Tolerance for singular values")
+        self.PCAtolSpinbox.setToolTip("Tolerance for singular values using 'arpack'")
         self.PCAsolverDropdown.currentTextChanged.connect(lambda currentText: self.PCAtolSpinbox.show() if currentText=='arpack' else self.PCAtolSpinbox.hide())
 
         # Only for 'randomized' solver
@@ -387,13 +394,13 @@ class MainWindow(qtw.QMainWindow):
         self.PCAiterated_powerSpinbox.setValue(0)
         self.PCAiterated_powerSpinbox.setSingleStep(100)
         self.PCAiterated_powerSpinbox.setGeometry(300, 180, 60, 20)
-        self.PCAiterated_powerSpinbox.setToolTip("Number of iterations for the power method")
+        self.PCAiterated_powerSpinbox.setToolTip("Number of iterations for the power method in 'randomized'")
         self.PCAsolverDropdown.currentTextChanged.connect(lambda currentText: self.PCAiterated_powerSpinbox.show() if currentText=='randomized' else self.PCAiterated_powerSpinbox.hide())
 
         # Only for 'randomized' solver
         self.PCAiterated_powerAutoCheckbox = qtw.QCheckBox("auto", self.centralWidget)
         self.PCAiterated_powerAutoCheckbox.setGeometry(300, 205, 40, 20)
-        self.PCAiterated_powerAutoCheckbox.setToolTip("Automatically choose number of iterations for the power method")
+        self.PCAiterated_powerAutoCheckbox.setToolTip("Automatically choose number of iterations")
         self.PCAiterated_powerAutoCheckbox.clicked.connect(lambda state: self.PCAiterated_powerSpinbox.setDisabled(True) if state else self.PCAiterated_powerSpinbox.setDisabled(False))
         self.PCAsolverDropdown.currentTextChanged.connect(lambda currentText: self.PCAiterated_powerAutoCheckbox.show() if currentText=='randomized' else self.PCAiterated_powerAutoCheckbox.hide())
 
@@ -404,14 +411,14 @@ class MainWindow(qtw.QMainWindow):
         self.PCAn_oversampledSpinbox.setValue(10)
         self.PCAn_oversampledSpinbox.setSingleStep(1)
         self.PCAn_oversampledSpinbox.setGeometry(130, 205, 40, 20)
-        self.PCAn_oversampledSpinbox.setToolTip("Additional number of random vectors to sample")
+        self.PCAn_oversampledSpinbox.setToolTip("Additional number of random vectors to sample using 'randomized'")
         self.PCAsolverDropdown.currentTextChanged.connect(lambda currentText: self.PCAn_oversampledSpinbox.show() if currentText=='randomized' else self.PCAn_oversampledSpinbox.hide())
         
         # Only for 'randomized' solver // Not for 'arpack' solver
         self.PCApower_iteration_normalizerDropdown = qtw.QComboBox(self.centralWidget)
         self.PCApower_iteration_normalizerDropdown.addItems(['auto', 'QR', 'LU', 'none'])
         self.PCApower_iteration_normalizerDropdown.setGeometry(175, 205, 50, 20)
-        self.PCApower_iteration_normalizerDropdown.setToolTip("Power iteration normalizer")
+        self.PCApower_iteration_normalizerDropdown.setToolTip("Power iteration normalizer using 'randomized'")
         self.PCAsolverDropdown.currentTextChanged.connect(lambda currentText: self.PCApower_iteration_normalizerDropdown.show() if currentText=='randomized' else self.PCApower_iteration_normalizerDropdown.hide())
 
         # Ignored PCA parameters:
@@ -421,18 +428,26 @@ class MainWindow(qtw.QMainWindow):
         self.NMFinitDropdown = qtw.QComboBox(self.centralWidget)
         self.NMFinitDropdown.addItems(["nndsvda", "random", "nndsvd", "nnsvdar"])
         self.NMFinitDropdown.setGeometry(130, 180, 65, 20)
-        self.NMFinitDropdown.setToolTip("Method used to initialize the procedure")
+        self.NMFinitDropdown.setToolTip("Method used to initialize the procedure:\n" \
+        "('nndsvda' is reccommended for XRD and 'nndsvd' is recommended for PDF)\n" \
+        "nndsvda (default): Better when sparsity is not desired\n" \
+        "random: Random non-negative matrices\n" \
+        "nndsvd: Non-negative Double Singular Value Decomposition (better for sparseness)\n" \
+        "nnsvdar: Faster, less accurate alternative to NNDSVDa when sparsity is not desired")
 
         self.NMFsolverDropdown = qtw.QComboBox(self.centralWidget)
         self.NMFsolverDropdown.addItems(["cd", "mu"])
         self.NMFsolverDropdown.setGeometry(200, 180, 40, 20)
-        self.NMFsolverDropdown.setToolTip("Numerical solver to use")
+        self.NMFsolverDropdown.setToolTip("Numerical solver to use:\n" \
+        "cd (default): Coordinate Descent\n" \
+        "mu: Multiplicative Update")
 
         # Only for 'mu' solver 
         self.NMFbeta_lossDropdown = qtw.QComboBox(self.centralWidget)
         self.NMFbeta_lossDropdown.addItems(["frobenius", "kullback-leibler"]) # "itakura-saito" not included as it cannot have zeros in input data, which XRD/PDF often can have
         self.NMFbeta_lossDropdown.setGeometry(245, 180, 95, 20)
-        self.NMFbeta_lossDropdown.setToolTip("Beta divergence to be minimized, measuring the distance between X and the dot product WH")
+        self.NMFbeta_lossDropdown.setToolTip("Beta divergence to be minimized, measuring the distance between X and the dot product WH using 'mu':" \
+        "frobenius is default")
         self.NMFsolverDropdown.currentTextChanged.connect(lambda currentText: self.NMFbeta_lossDropdown.show() if currentText=='mu' else self.NMFbeta_lossDropdown.hide())
 
         self.NMFtolSpinbox = qtw.QSpinBox(self.centralWidget)
@@ -451,11 +466,46 @@ class MainWindow(qtw.QMainWindow):
         self.NMFmax_iterSpinbox.setGeometry(190, 205, 50, 20)
         self.NMFmax_iterSpinbox.setToolTip("Maximum number of iterations before timing out")
 
+        self.NMFalpha_WDSpinbox = qtw.QDoubleSpinBox(self.centralWidget)
+        self.NMFalpha_WDSpinbox.setMinimum(0)
+        self.NMFalpha_WDSpinbox.setMaximum(10)
+        self.NMFalpha_WDSpinbox.setValue(0)
+        self.NMFalpha_WDSpinbox.setDecimals(5)
+        self.NMFalpha_WDSpinbox.setSingleStep(0.00005)
+        self.NMFalpha_WDSpinbox.setGeometry(130, 230, 65, 20)
+        self.NMFalpha_WDSpinbox.setToolTip("Constant that multiplies the regularization terms of the features:\n" \
+        "(Regularization a penalty term to constrain parameter complexity and reduce overfitting)\n" \
+        "0 (default) means no regularization")
+
+        self.NMFalpha_HDSpinbox = qtw.QDoubleSpinBox(self.centralWidget)
+        self.NMFalpha_HDSpinbox.setMinimum(0)
+        self.NMFalpha_HDSpinbox.setMaximum(10)
+        self.NMFalpha_HDSpinbox.setValue(0)
+        self.NMFalpha_HDSpinbox.setDecimals(5)
+        self.NMFalpha_HDSpinbox.setSingleStep(0.00005)
+        self.NMFalpha_HDSpinbox.setGeometry(200, 230, 65, 20)
+        self.NMFalpha_HDSpinbox.setToolTip("Constant that multiplies the regularization terms of the mixing of features:\n" \
+        "0 means no regularization")
+
+        self.NMFalpha_HsameCheckbox = qtw.QCheckBox("same", self.centralWidget)
+        self.NMFalpha_HsameCheckbox.setGeometry(270, 230, 45, 20)
+        self.NMFalpha_HsameCheckbox.setToolTip("Use same regularization constant for features and mixing")
+        self.NMFalpha_HsameCheckbox.clicked.connect(lambda state: self.NMFalpha_HDSpinbox.setDisabled(True) if state else self.NMFalpha_HDSpinbox.setDisabled(False))
+        self.NMFalpha_HsameCheckbox.clicked.connect(lambda state: self.NMFalpha_HDSpinbox.setValue(self.NMFalpha_WDSpinbox.value()) if state else None)
+        self.NMFalpha_WDSpinbox.valueChanged.connect(lambda value: self.NMFalpha_HDSpinbox.setValue(value) if self.NMFalpha_HsameCheckbox.isChecked() else None)
+
+        # Used in 'cd' solver
+        self.NMFl1_ratioDSpinbox = qtw.QDoubleSpinBox(self.centralWidget)
+        self.NMFl1_ratioDSpinbox.setMinimum(0)
+        self.NMFl1_ratioDSpinbox.setMaximum(1)
+        self.NMFl1_ratioDSpinbox.setValue(0)
+        self.NMFl1_ratioDSpinbox.setSingleStep(0.05)
+        self.NMFl1_ratioDSpinbox.setGeometry(245, 180, 45, 20)
+        self.NMFl1_ratioDSpinbox.setToolTip("Regularization mixing parameter of an elementwise l2 penalty aka. Frobenius Norm (0, default) and elementwwise l1 penalty (1)")
+        self.NMFsolverDropdown.currentTextChanged.connect(lambda currentText: self.NMFl1_ratioDSpinbox.show() if currentText=='cd' else self.NMFl1_ratioDSpinbox.hide())
+
         #Ignored NMF parmeters:
         # random_state
-        # alpha_W
-        # alpha_H
-        # l1_ratio
         # verbose
         # shuffle
 
@@ -463,17 +513,22 @@ class MainWindow(qtw.QMainWindow):
         self.ICAalgorithmDropdown = qtw.QComboBox(self.centralWidget)
         self.ICAalgorithmDropdown.addItems(['parallel', 'deflation'])
         self.ICAalgorithmDropdown.setGeometry(130, 180, 65, 20)
-        self.ICAalgorithmDropdown.setToolTip("Specify which algorithm to use")
+        self.ICAalgorithmDropdown.setToolTip("Specify which algorithm to use:" \
+        "parallel is default")
 
         self.ICAwhitenDropdown = qtw.QComboBox(self.centralWidget)
         self.ICAwhitenDropdown.addItems(['unit-variance', 'arbitrary-variance', 'False'])
         self.ICAwhitenDropdown.setGeometry(200, 180, 110, 20)
-        self.ICAwhitenDropdown.setToolTip("Whitening strategy to use. False means no whitening")
+        self.ICAwhitenDropdown.setToolTip("Whitening strategy to use. False means no whitening:" \
+        "unit-variance (default): the whitening matrix is rescaled to ensure each recovered source has unit variance\n" \
+        "arbitrary-variance: a whitening with variance arbitrary is used\n" \
+        "False: Data is considered whitened and no whitening is performed")
 
         self.ICAfunDropdown = qtw.QComboBox(self.centralWidget)
         self.ICAfunDropdown.addItems(['logcosh', 'exp', 'cube'])
         self.ICAfunDropdown.setGeometry(245, 205, 60, 20)
-        self.ICAfunDropdown.setToolTip("The functional form of the G function used in the approximation to neg-entropy")
+        self.ICAfunDropdown.setToolTip("The functional form of the G function used in the approximation to neg-entropy:" \
+        "logcosh is default")
 
         self.ICAmax_iterSpinbox = qtw.QSpinBox(self.centralWidget)
         self.ICAmax_iterSpinbox.setMinimum(0)
@@ -494,7 +549,9 @@ class MainWindow(qtw.QMainWindow):
         self.ICAwhiten_solverDropdown = qtw.QComboBox(self.centralWidget)
         self.ICAwhiten_solverDropdown.addItems(['svd', 'eigh'])
         self.ICAwhiten_solverDropdown.setGeometry(315, 180, 45, 20)
-        self.ICAwhiten_solverDropdown.setToolTip("The solver to use for whitening")
+        self.ICAwhiten_solverDropdown.setToolTip("The solver to use for whitening:" \
+        "svd (default): More numerically stable if the problem is degenerate, and often faster for scattering\n" \
+        "eigh: More memory efficient when there are more scans than datapoints (rare in scattering)")
 
         # Ignored ICA parameters:
         # fun_args
@@ -554,6 +611,10 @@ class MainWindow(qtw.QMainWindow):
         
 
         help_menu = menu.addMenu("Help")
+        github_button = qtw.QAction("Source code", self)
+        github_button.triggered.connect(lambda: qtg.QDesktopServices.openUrl(qtc.QUrl("https://github.com/etnorth/BaSSET")))
+        help_menu.addAction(github_button)
+
         about_button = qtw.QAction(qtg.QIcon(f"{self.configpath}/assets/icon.png"), "About", self)
         about_button.triggered.connect(self.about_button_clicked)
         help_menu.addAction(about_button)
@@ -616,6 +677,10 @@ class MainWindow(qtw.QMainWindow):
                 self.NMFbeta_lossDropdown.hide()
                 self.NMFtolSpinbox.hide()
                 self.NMFmax_iterSpinbox.hide()
+                self.NMFalpha_WDSpinbox.hide()
+                self.NMFalpha_HDSpinbox.hide()
+                self.NMFalpha_HsameCheckbox.hide()
+                self.NMFl1_ratioDSpinbox.hide()
 
                 self.ICAalgorithmDropdown.hide()
                 self.ICAwhitenDropdown.hide()
@@ -637,6 +702,10 @@ class MainWindow(qtw.QMainWindow):
                 self.NMFbeta_lossDropdown.show() if self.NMFsolverDropdown.currentText=='mu' else self.NMFbeta_lossDropdown.hide()
                 self.NMFtolSpinbox.show()
                 self.NMFmax_iterSpinbox.show()
+                self.NMFalpha_WDSpinbox.show()
+                self.NMFalpha_HDSpinbox.show()
+                self.NMFalpha_HsameCheckbox.show()
+                self.NMFl1_ratioDSpinbox.show() if self.NMFsolverDropdown.currentText=='cd' else self.NMFl1_ratioDSpinbox.show()
 
                 self.ICAalgorithmDropdown.hide()
                 self.ICAwhitenDropdown.hide()
@@ -658,6 +727,10 @@ class MainWindow(qtw.QMainWindow):
                 self.NMFbeta_lossDropdown.hide()
                 self.NMFtolSpinbox.hide()
                 self.NMFmax_iterSpinbox.hide()
+                self.NMFalpha_WDSpinbox.hide()
+                self.NMFalpha_HDSpinbox.hide()
+                self.NMFalpha_HsameCheckbox.hide()
+                self.NMFl1_ratioDSpinbox.hide()
 
                 self.ICAalgorithmDropdown.show()
                 self.ICAwhitenDropdown.show()
@@ -756,7 +829,7 @@ class MainWindow(qtw.QMainWindow):
             print(f"The selected filetype ({self.filetypeGroup.checkedButton().text()}) is not compatible with the input format {self.inputformatGroup.checkedButton().text()}")
             return
         print("Beginning analysis...")
-        dataset = import_data(self.indirLabel.text()+"\\", self.filetypeGroup.checkedButton().text(), self.autofiletypeCheck.isChecked())
+        dataset = import_dataset(self.indirLabel.text()+"\\", self.filetypeGroup.checkedButton().text(), self.autofiletypeCheck.isChecked())
         numComponents = self.numComponentsSlider.value()
         angles = np.array([values["angle"].to_numpy() for values in dataset.values()])
         intensities = np.array([values["intensity"].to_numpy() for values in dataset.values()])
@@ -780,7 +853,10 @@ class MainWindow(qtw.QMainWindow):
                                                                           solver=self.NMFsolverDropdown.currentText(),
                                                                           beta_loss=self.NMFbeta_lossDropdown.currentText(),
                                                                           tol=10**(self.NMFtolSpinbox.value()),
-                                                                          max_iter=self.NMFmax_iterSpinbox.value())
+                                                                          max_iter=self.NMFmax_iterSpinbox.value(),
+                                                                          alpha_W=self.NMFalpha_WDSpinbox.value(),
+                                                                          alpha_H='same' if self.NMFalpha_HsameCheckbox.isChecked() else self.NMFalpha_HDSpinbox.value(),
+                                                                          l1_ratio=self.NMFl1_ratioDSpinbox.value())
             case "ICA":
                 fitted, transformed, reconstructed = ICA_analysis(angles, intensities, numComponents,
                                                                   algorithm=self.ICAalgorithmDropdown.currentText(),
@@ -842,7 +918,23 @@ class MainWindow(qtw.QMainWindow):
         fig.canvas.manager.set_window_title(f"{numComponents} component {self.algorithmGroup.checkedButton().text()} on {self.indirLabel.text().split('/')[-1]}")
 
         fig.show()
+
+        self.export_results()
+    
+    def write_summary(self, results_path):
+        with open(f"{results_path}/summary.txt", "w") as outfile:
+            outfile.write(f"{self.algorithmGroup.checkedButton().text()} analysis was performed with {self.numComponentsSlider.value()} components")
+
+    def export_results(self):
+        if not os.path.exists("results"):
+            os.mkdir("results")
         
+        export_time = datetime.now().strftime("%y%m%d-%H%m")
+        results_path = f"results/{export_time}_{self.algorithmGroup.checkedButton().text()}_{self.numComponentsSlider.value()}_{self.filetypeGroup.checkedButton().text()[1:]}"
+        os.mkdir(results_path)
+
+        self.write_summary(results_path)
+
 class AboutDialog(qtw.QDialog):
     def __init__(self, parent=None):
         super().__init__()
@@ -862,9 +954,16 @@ class AboutDialog(qtw.QDialog):
         self.version = qtw.QLabel("Version: ALPHA_DEV")
         self.version.setAlignment(qtc.Qt.AlignCenter)
 
-        self.company = qtw.QLabel("© 2026 NAFUMA Battery - University of Oslo")
+        self.company = qtw.QLabel("Developed at NAFUMA Battery - University of Oslo")
         self.company.setAlignment(qtc.Qt.AlignCenter)
         self.company.resize(self.company.sizeHint())
+        
+        self.funding = qtw.QLabel("Funded by the Research Council of Norway<br>"
+        "(<a href='https://prosjektbanken.forskningsradet.no/en/project/FORISS/325316'>BaSSET 325316</a>)")
+        self.funding.setAlignment(qtc.Qt.AlignCenter)
+        self.funding.setTextFormat(qtc.Qt.RichText)
+        self.funding.setTextInteractionFlags(qtc.Qt.TextBrowserInteraction)
+        self.funding.setOpenExternalLinks(True)
         
         self.developer = qtw.QLabel("Eira T. North")
         self.developer.setAlignment(qtc.Qt.AlignCenter)
@@ -874,6 +973,7 @@ class AboutDialog(qtw.QDialog):
         layout.addWidget(self.logo)
         layout.addWidget(self.version)
         layout.addWidget(self.company)
+        layout.addWidget(self.funding)
         layout.addWidget(self.developer)
 
         self.setLayout(layout)
