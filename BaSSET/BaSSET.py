@@ -919,21 +919,93 @@ class MainWindow(qtw.QMainWindow):
 
         fig.show()
 
-        self.export_results()
+        self.export_results(angles, fitted, transformed, reconstructed, fig, errors)
     
-    def write_summary(self, results_path):
+    def write_summary(self, results_path, errors=None):
         with open(f"{results_path}/summary.txt", "w") as outfile:
-            outfile.write(f"{self.algorithmGroup.checkedButton().text()} analysis was performed with {self.numComponentsSlider.value()} components")
+            outfile.write(f"Summary of {self.numComponentsSlider.value()} component {self.algorithmGroup.checkedButton().text()} analysis of {self.filetypeGroup.checkedButton().text()[1:]} in ...{self.indirLabel.text()[-51:]}\n\n")
+            outfile.write("The following algorithm parameters where used:\n")
+            match self.algorithmGroup.checkedButton().text():
+                case "PCA":
+                    outfile.write(f"Whiten: {self.PCAwhitenCheck.isChecked()}\n")
+                    outfile.write(f"SVD solver: {self.PCAsolverDropdown.currentText()}\n")
+                    if self.PCAsolverDropdown.currentText()=="arpack": outfile.write(f"Tolerance: {self.PCAtolSpinbox.value()}\n")
+                    if self.PCAsolverDropdown.currentText()=="randomized":
+                        outfile.write(f"# of iterations (Power method): {self.PCAiterated_powerSpinbox() if self.PCAiterated_powerAutoCheckbox.isChecked() else 'auto'}\n")
+                        outfile.write(f"Additional vectors to sample data: {self.PCAn_oversampledSpinbox.value()}\n")
+                        outfile.write(f"Power iteration normalizer: {self.PCApower_iteration_normalizerDropdown.currentText()}\n")
+                        outfile.write(f"\nThe PCA explained variance for {self.numComponentsSlider.value()} components was: {errors[self.numComponentsSlider.value()+1]}\n")
+                case "NMF":
+                    outfile.write(f"Initialization method: {self.NMFinitDropdown.currentText()}\n")
+                    outfile.write(f"Numerical solver: {self.NMFsolverDropdown.currentText()}\n")
+                    if self.NMFsolverDropdown.currentText()=='mu': outfile.write(f"Beta divergence to minimize: {self.NMFbeta_lossDropdown.currentText()}\n")
+                    outfile.write(f"Tolerance: {10**self.NMFtolSpinbox.value()}\n")
+                    outfile.write(f"Maximum number of iterations: {self.NMFmax_iterSpinbox.value()}\n")
+                    outfile.write(f"Regularization constant for features: {self.NMFalpha_WDSpinbox.value()}\n")
+                    outfile.write(f"Regularization constant for samples: {self.NMFalpha_HDSpinbox.value()}\n") # Should work even if alpha_Hsame=True
+                    outfile.write(f"Regularization mixing parameter (0=l2, 1=l1): {self.NMFl1_ratioDSpinbox.value()}\n")
+                    outfile.write(f"\nThe NMF reconstruction error for {self.numComponentsSlider.value()} components was: {errors[self.numComponentsSlider.value()+1]}\n")
+                case "ICA":
+                    outfile.write(f"Algorithm: {self.ICAalgorithmDropdown.currentText()}\n")
+                    outfile.write(f"Whitening strategy: {self.ICAwhitenDropdown.currentText()}\n")
+                    outfile.write(f"Whitening solver: {self.ICAwhiten_solverDropdown.currentText()}\n")
+                    outfile.write(f"Functional G form function: {self.ICAfunDropdown.currentText()}\n")
+                    outfile.write(f"Maximum number of iterations: {self.ICAmax_iterSpinbox.value()}\n")
+                    outfile.write(f"Tolerance: {10**self.ICAtolSpinbox.value()}\n")
 
-    def export_results(self):
+    def write_components(self, results_path, angles, fitted):
+        os.mkdir(f"{results_path}/components")
+        match self.filetypeGroup.checkedButton().text():
+            case ".xy" | ".gr":
+                for i, component in enumerate(fitted.components_):
+                    with open(f"{results_path}/components/component_{i+1}{self.filetypeGroup.checkedButton().text()}", "w") as outfile:
+                        for j in range(len(angles[i])):
+                            outfile.write(f"{angles[i][j]}\t{component[j]}\n")
+            case ".xye" | ".dat":
+                for i, component in enumerate(fitted.components_):
+                        with open(f"{results_path}/components/component_{i+1}{self.filetypeGroup.checkedButton().text()}", "w") as outfile:
+                            for j in range(len(angles[i])):
+                                outfile.write(f"{angles[i][j]}\t{component[j]}\t0\n")
+
+    def write_scores(self, results_path, transformed):
+        print(transformed)
+        with open(f"{results_path}/scores.csv", "w") as outfile:
+            for i in range(self.numComponentsSlider.value()-1):
+                outfile.write(f"Component {i+1},")
+            outfile.write(f"Component {self.numComponentsSlider.value()}\n")
+                
+            for i in range(len(transformed)):
+                for j in range(len(transformed[0])-1):
+                    outfile.write(f"{transformed[i][j]},")
+                outfile.write(f"{transformed[i][len(transformed[0])-1]}\n")
+
+    def write_reconstructions(self, results_path, angles, reconstructed):
+        os.mkdir(f"{results_path}/reconstructions")
+        match self.filetypeGroup.checkedButton().text():
+            case ".xy" | ".gr":
+                for i in range(len(reconstructed)):
+                    with open(f"{results_path}/reconstructions/scan_{i+1}{self.filetypeGroup.checkedButton().text()}", "w") as outfile:
+                        for j in range(len(angles[i])):
+                            outfile.write(f"{angles[i][j]}\t{reconstructed[i][j]}\n")
+            case ".xye" | ".dat":
+                for i in range(len(reconstructed)):
+                        with open(f"{results_path}/reconstructions/scan_{i+1}{self.filetypeGroup.checkedButton().text()}", "w") as outfile:
+                            for j in range(len(angles[i])):
+                                outfile.write(f"{angles[i][j]}\t{reconstructed[i][j]}\t0\n")
+
+    def export_results(self, angles, fitted, transformed, reconstructed, fig, errors=None):
         if not os.path.exists("results"):
             os.mkdir("results")
         
-        export_time = datetime.now().strftime("%y%m%d-%H%m")
+        export_time = datetime.now().strftime("%y%m%d-%H%M%S")
         results_path = f"results/{export_time}_{self.algorithmGroup.checkedButton().text()}_{self.numComponentsSlider.value()}_{self.filetypeGroup.checkedButton().text()[1:]}"
         os.mkdir(results_path)
 
-        self.write_summary(results_path)
+        fig.savefig(f"{results_path}/overview.jpg")
+        self.write_summary(results_path, errors)
+        self.write_components(results_path, angles, fitted)
+        self.write_scores(results_path, transformed)
+        self.write_reconstructions(results_path, angles, reconstructed)
 
 class AboutDialog(qtw.QDialog):
     def __init__(self, parent=None):
