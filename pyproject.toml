@@ -1,0 +1,45 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "BaSSET"
+version = "1.0.0-alpha"
+dependencies = [
+    "natsort",
+    "numpy",
+    "pandas",
+    "matplotlib",
+    "scikit-learn",
+    "scipy",
+    "PyQt5"
+]
+requires-python = ">3.10"
+authors = [{name="Eira Tiberg North", email="erlendtn@uio.no"}]
+maintainers = [{name="Eira Tiberg North", email="erlendtn@uio.no"}]
+description = "A GUI-based toolbox for signal separation of operando x-ray scattering experiments"
+readme = "README.md"
+keywords = ["PDF", "XRD", "operando", "GUI"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Natural Language :: English",
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Chemistry",
+    "Topic :: Scientific/Engineering :: Information Analysis",
+    "Topic :: Scientific/Engineering :: Physics",
+    "Topic :: Scientific/Engineering :: Visualization"
+]
+license = "MIT"
+license-files = ["LICEN[CS]E*"]
+
+[project.gui-scripts]
+basset = "BaSSET.BaSSET:main"
+
+[tool.setuptools]
+packages = ["BaSSET"]
+
+[project.urls]
+Repository = "https://github.com/etnorth/BaSSET"
+Issues = "https://github.com/etnorth/BaSSET/issues"

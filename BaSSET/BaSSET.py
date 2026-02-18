@@ -13,11 +13,13 @@ import PyQt5.QtCore as qtc
 import PyQt5.QtWidgets as qtw
 import PyQt5.QtGui as qtg
 
+
 import platform
 if platform.system() == "Windows":
     # Separates BaSSET from the "Pythonw.exe" ID so it can have its own tackbar icon
     import ctypes
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u"BaSSET")
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u"UiO.BaSSET")
+
 
 def import_dataset(dir, filetype, auto_filetype):
     """
@@ -223,7 +225,7 @@ class MainWindow(qtw.QMainWindow):
 
         self.about_window = None
 
-        self.setWindowIcon(qtg.QIcon(f"{self.configpath}/assets/icon.png"))
+        self.setWindowIcon(qtg.QIcon(f"{self.configpath}/assets/icon.ico"))
         self.setWindowTitle("Battery Signal Separation and Enhancement Toolbox")
         self.resize(qtc.QSize(460, 360)) # Increase to 640x480 in future?
         self.centralWidget = qtw.QWidget(self)
@@ -1052,10 +1054,13 @@ class AboutDialog(qtw.QDialog):
 
         self.setFixedSize(qtc.QSize(280, 380))
 
-if __name__=="__main__":
+def main():
     app = qtw.QApplication(sys.argv)
 
     window = MainWindow()
     window.show()
 
     app.exec()
+
+if __name__=="__main__":
+    main()
