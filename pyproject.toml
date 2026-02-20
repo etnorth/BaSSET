@@ -11,13 +11,12 @@ dependencies = [
     "pandas",
     "matplotlib",
     "scikit-learn",
-    "scipy",
     "PyQt5"
 ]
 requires-python = ">3.10"
 authors = [{name="Eira Tiberg North", email="erlendtn@uio.no"}]
 maintainers = [{name="Eira Tiberg North", email="erlendtn@uio.no"}]
-description = "A GUI-based toolbox for signal separation of operando x-ray scattering experiments"
+description = "A GUI-based toolbox for signal separation of operando scattering experiments"
 readme = "README.md"
 keywords = ["PDF", "XRD", "operando", "GUI"]
 classifiers = [

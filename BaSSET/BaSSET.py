@@ -1,18 +1,18 @@
 import sys
 import os
 from glob import glob
+from datetime import datetime
+
 from natsort import natsorted
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
-from datetime import datetime
-
-from sklearn.decomposition import PCA, NMF, FastICA
-
 import PyQt5.QtCore as qtc
 import PyQt5.QtWidgets as qtw
 import PyQt5.QtGui as qtg
 
+from sklearn.decomposition import PCA, NMF, FastICA
+#from diffpy.stretched_nmf.snmf_class import SNMFOptimizer 
 
 import platform
 if platform.system() == "Windows":
@@ -21,7 +21,7 @@ if platform.system() == "Windows":
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u"UiO.BaSSET")
 
 
-def import_dataset(dir, filetype, auto_filetype):
+def import_dataset(dir, filetype, auto_filetype=False):
     """
     Imports files from chosen directory of chosen filetype
     """
@@ -64,46 +64,13 @@ def theta_to_Q(angles, wavelength):
     return ((4*np.pi) / wavelength) * np.sin(np.deg2rad(angles)/2)
 
 def PCA_analysis(angles, intensities, numComponents, whiten, svd_solver, tol, iterated_power, n_oversamples, power_iteration_normalizer):
-    n_components = 10
+    n_components = 10 # Setting this higher than the user's number ensures reporting of explained variances
     pca = PCA(n_components = n_components, whiten=whiten, svd_solver=svd_solver, tol=tol, iterated_power=iterated_power, n_oversamples=n_oversamples, power_iteration_normalizer=power_iteration_normalizer)
     X = pca.fit(intensities)
     transformed = pca.transform(intensities)
     reconstructed = pca.inverse_transform(transformed)
-    
-    ################################################################
-    # Normalization, difference and output saving not implemented! #
-    ################################################################
-    
+
     return X, transformed, reconstructed
-
-    if numComponents < 3:
-        plotwidth = 3
-    else:
-        plotwidth = numComponents
-
-    fig, axs = plt.subplots(3, plotwidth, layout="constrained", gridspec_kw = {"hspace":0.3})
-    for i in range(numComponents):
-        axs[0][i].plot(angles[i], X.components_[i], "k")
-        axs[0][i].set_title(f"Component {i+1}")
-        axs[0][i].set_xlim(min(angles[i]), max(angles[i]))
-        axs[0][i].set_ylim(min(X.components_[i]), max(X.components_[i]))
-
-        axs[2][0].plot(np.arange(1,len(angles)+1), transformed[:,i], label=f"{i+1}")
-
-        axs[1][i].plot(angles[i], reconstructed[i], "r")
-        axs[1][i].plot(angles[i], intensities[i], "k")
-        axs[1][i].plot(angles[i], intensities[i]-reconstructed[i], "g")
-        axs[1][i].ticklabel_format(axis="y", style="sci", scilimits=[0,0])
-        axs[1][i].set_title(f"Reconstruction {i+1}")
-
-    axs[2][0].ticklabel_format(axis="y", style="sci", scilimits=[0,0])
-    axs[2][0].legend()
-    axs[2][0].set_title("Scores")
-
-    axs[2][1].plot(np.arange(1, n_components+1), X.explained_variance_ratio_*100, "ko-")
-    axs[2][1].set_title("Explained variances")
-
-    fig.show()
 
 def NMF_analysis(angles, intensities, numComponents, init, solver, beta_loss, tol, max_iter, alpha_W, alpha_H, l1_ratio):
     n_components_list = np.arange(1, 10+1, dtype=int)
@@ -121,101 +88,26 @@ def NMF_analysis(angles, intensities, numComponents, init, solver, beta_loss, to
             transformed = nmf.transform(intensities)
             reconstructed = nmf.inverse_transform(transformed)
 
-    ################################################################
-    # Normalization, difference and output saving not implemented! #
-    ################################################################
-    
     return X, transformed, reconstructed, errors
 
-    if numComponents < 3:
-        plotwidth = 3
-    else:
-        plotwidth = numComponents
-
-    fig, axs = plt.subplots(3, plotwidth, layout="constrained", gridspec_kw = {"hspace":0.3})
-    for i in range(numComponents):
-        axs[0][i].plot(angles[i], X.components_[i], "k")
-        axs[0][i].set_title(f"Component {i+1}")
-        axs[0][i].set_xlim(min(angles[i]), max(angles[i]))
-        axs[0][i].set_ylim(min(X.components_[i]), max(X.components_[i]))
-
-        axs[2][0].plot(np.arange(1,len(angles)+1), transformed[:,i], label=f"{i+1}")
-
-        axs[1][i].plot(angles[i], reconstructed[i], "r")
-        axs[1][i].plot(angles[i], intensities[i], "k")
-        axs[1][i].plot(angles[i], intensities[i]-reconstructed[i], "g")
-        axs[1][i].ticklabel_format(axis="y", style="sci", scilimits=[0,0])
-        axs[1][i].set_title(f"Reconstruction {i+1}")
-
-    axs[2][0].ticklabel_format(axis="y", style="sci", scilimits=[0,0])
-    axs[2][0].legend(frameon=False)
-    axs[2][0].set_title("Scores")
-
-    axs[2][1].plot(n_components_list, errors, "ko-")
-    axs[2][1].set_title("Reconstruction error")
-
-    fig.show()
-
 def ICA_analysis(angles, intensities, numComponents, algorithm, whiten, fun, max_iter, tol, whiten_solver):
-    n_components_list = np.arange(1, 10+1, dtype=int)
-    #errors = np.empty(len(n_components_list))
-    X = None
-    transformed = None
-    reconstructed = None
-
-    """
-    for i, n_components in enumerate(n_components_list):
-        ica = FastICA(n_components = n_components, max_iter=5000)
-        X_temp = ica.fit(intensities)
-        #errors[i] = X_temp.reconstruction_err_
-        if numComponents == n_components:
-            X = X_temp
-            transformed = ica.transform(intensities)
-            reconstructed = ica.inverse_transform(transformed)
-    """
     ica = FastICA(n_components = numComponents, algorithm=algorithm, whiten=whiten, fun=fun, max_iter=max_iter, tol=tol, whiten_solver=whiten_solver)
     X = ica.fit(intensities)
     transformed = ica.transform(intensities)
     reconstructed = ica.inverse_transform(transformed)
-    ################################################################
-    # Normalization, difference and output saving not implemented! #
-    ################################################################
-    
+
     return X, transformed, reconstructed
 
-    if numComponents < 3:
-        plotwidth = 3
-    else:
-        plotwidth = numComponents
+def SNMF_analysis(angles, intensities, numComponents, min_iter, max_iter, tol, rho, eta):
+    NotImplemented
+    """
+    snmf = SNMFOptimizer(source_matrix = intensities, n_components = numComponents, min_iter=min_iter, max_iter=max_iter, tol=tol)
+    X = snmf.fit(rho=rho, eta=eta)
+    transformed = snmf.apply_transformation_matrix()
+    reconstructed = snmf.reconstruct_matrix()
 
-    fig, axs = plt.subplots(3, plotwidth, layout="constrained", gridspec_kw = {"hspace":0.3})
-    for i in range(numComponents):
-        axs[0][i].plot(angles[i], X.components_[i], "k")
-        axs[0][i].set_title(f"Component {i+1}")
-        axs[0][i].set_xlim(min(angles[i]), max(angles[i]))
-        axs[0][i].set_ylim(min(X.components_[i]), max(X.components_[i]))
-
-        axs[2][0].plot(np.arange(1,len(angles)+1), transformed[:,i], label=f"{i+1}")
-
-        axs[1][i].plot(angles[i], reconstructed[i], "r")
-        axs[1][i].plot(angles[i], intensities[i], "k")
-        axs[1][i].plot(angles[i], intensities[i]-reconstructed[i], "g")
-        axs[1][i].ticklabel_format(axis="y", style="sci", scilimits=[0,0])
-        axs[1][i].set_title(f"Reconstruction {i+1}")
-
-    axs[2][0].ticklabel_format(axis="y", style="sci", scilimits=[0,0])
-    axs[2][0].legend(frameon=False)
-    axs[2][0].set_title("Scores")
-
-    #axs[2][1].plot(n_components_list, errors, "ko-")
-    axs[2][1].set_title("Reconstruction error")
-
-    fig.show()
-
-def SNMF_analysis(angles, intensities, numComponents):
-    raise NotImplementedError("To be added")
-    
-    return X, transformed, reconstructed, error
+    return X, transformed, reconstructed
+    """
 
 class MainWindow(qtw.QMainWindow):
     def __init__(self):
@@ -259,7 +151,7 @@ class MainWindow(qtw.QMainWindow):
         self.inputformatGroup.addButton(self.qButton)
         self.inputformatGroup.addButton(self.thetaButton)
         self.inputformatGroup.addButton(self.rButton)
-        
+
         self.wavelengthWidget = qtw.QDoubleSpinBox(self.centralWidget, decimals=6)
         self.wavelengthWidget.setGeometry(60, 80, 80, 20)
         self.wavelengthWidget.setMinimum(0)
@@ -292,7 +184,7 @@ class MainWindow(qtw.QMainWindow):
         self.filetypeGroup.addButton(self.xyeButton)
         self.filetypeGroup.addButton(self.datButton)
         self.filetypeGroup.addButton(self.grButton)
-        
+
         self.autofiletypeCheck = qtw.QCheckBox("auto", self.centralWidget)
         self.autofiletypeCheck.setGeometry(35, 170, 40, 20)
         self.autofiletypeCheck.setToolTip("Selects the most popular filetype in the chosen directory")
@@ -306,7 +198,7 @@ class MainWindow(qtw.QMainWindow):
         self.PCAButton.setGeometry(170, 60, 40, 20)
         self.PCAButton.setChecked(True)
         self.PCAButton.setToolTip("Principal Component Analysis (scikit-learn)")
-        
+
         self.NMFButton = qtw.QRadioButton("NMF", self.centralWidget)
         self.NMFButton.setGeometry(220, 60, 40, 20)
         self.NMFButton.setToolTip("Non-Negative Matrix Factorization (scikit-learn)")
@@ -314,7 +206,7 @@ class MainWindow(qtw.QMainWindow):
         self.ICAButton = qtw.QRadioButton("ICA", self.centralWidget)
         self.ICAButton.setGeometry(270, 60, 40, 20)
         self.ICAButton.setToolTip("Independent Component Analysis (scikit-learn)")
-        
+
         self.ICA1Button = qtw.QRadioButton("ICA1", self.centralWidget)
         self.ICA1Button.setGeometry(170, 80, 40, 20)
         self.ICA1Button.setDisabled(True)
@@ -415,7 +307,7 @@ class MainWindow(qtw.QMainWindow):
         self.PCAn_oversampledSpinbox.setGeometry(130, 205, 40, 20)
         self.PCAn_oversampledSpinbox.setToolTip("Additional number of random vectors to sample using 'randomized'")
         self.PCAsolverDropdown.currentTextChanged.connect(lambda currentText: self.PCAn_oversampledSpinbox.show() if currentText=='randomized' else self.PCAn_oversampledSpinbox.hide())
-        
+
         # Only for 'randomized' solver // Not for 'arpack' solver
         self.PCApower_iteration_normalizerDropdown = qtw.QComboBox(self.centralWidget)
         self.PCApower_iteration_normalizerDropdown.addItems(['auto', 'QR', 'LU', 'none'])
@@ -626,7 +518,7 @@ class MainWindow(qtw.QMainWindow):
             self.update_config_file()
 
         self.algorithm_widgets()
-    
+
     def close_event(self, event):
         qtw.QApplication.quit()
 
@@ -723,7 +615,7 @@ class MainWindow(qtw.QMainWindow):
                 self.PCAiterated_powerAutoCheckbox.hide()
                 self.PCAn_oversampledSpinbox.hide()
                 self.PCApower_iteration_normalizerDropdown.hide()
-        
+
                 self.NMFinitDropdown.hide()
                 self.NMFsolverDropdown.hide()
                 self.NMFbeta_lossDropdown.hide()
@@ -805,7 +697,6 @@ class MainWindow(qtw.QMainWindow):
             for widget in self.filetypeGroup.buttons():
                 widget.setDisabled(False)
 
-            
         if self.filetypeGroup.checkedButton().text() == '.gr':
             self.qButton.setDisabled(True)
             self.thetaButton.setDisabled(True)
@@ -814,7 +705,7 @@ class MainWindow(qtw.QMainWindow):
         else:
             self.qButton.setDisabled(False)
             self.thetaButton.setDisabled(False)
-            self.rButton.setDisabled(True)            
+            self.rButton.setDisabled(True)
 
         with open(self.configfile, "w", encoding='utf-8') as outfile:
             outfile.write(f"Current file directory: {self.indirLabel.text() if self.indirLabel.text()!='Select the folder containing your data files' else ''}\n")
@@ -825,7 +716,7 @@ class MainWindow(qtw.QMainWindow):
             outfile.write(f"Auto filetype: {self.autofiletypeCheck.isChecked()}\n")
             outfile.write(f"Algorithm: {self.algorithmGroup.checkedButton().text()}\n")
             outfile.write(f"Number of components: {self.numComponentsSlider.value()}\n")
-                
+
     def run_analysis(self):
         if self.filetypeGroup.checkedButton().text() != '.gr' and self.inputformatGroup.checkedButton().text() == "r (Å)":
             print(f"The selected filetype ({self.filetypeGroup.checkedButton().text()}) is not compatible with the input format {self.inputformatGroup.checkedButton().text()}")
@@ -868,6 +759,8 @@ class MainWindow(qtw.QMainWindow):
                                                                   tol=10**(self.ICAtolSpinbox.value()),
                                                                   whiten_solver=self.ICAwhiten_solverDropdown.currentText())
                 errors = None
+            case "SNMF":
+                NotImplemented
 
         print("Analysis completed")
         self.plot_analysis(angles, intensities, numComponents, fitted, transformed, reconstructed, errors)
@@ -893,7 +786,7 @@ class MainWindow(qtw.QMainWindow):
             axs[0][i].set_title(f"Component {i+1}")
             axs[0][i].set_xlabel(xlabel)
             axs[0][i].set_xlim(min(angles[i]), max(angles[i]))
-            axs[0][i].set_ylim(min(fitted.components_[i]), max(fitted.components_[i]))        
+            axs[0][i].set_ylim(min(fitted.components_[i]), max(fitted.components_[i]))
 
             axs[2][0].plot(np.arange(1,len(angles)+1), transformed[:,i], label=f"{i+1}")
             axs[1][i].plot(angles[reconNum[i]], reconstructed[reconNum[i]], "r")
@@ -922,7 +815,7 @@ class MainWindow(qtw.QMainWindow):
         fig.show()
 
         self.export_results(angles, fitted, transformed, reconstructed, fig, errors)
-    
+
     def write_summary(self, results_path, errors=None):
         with open(f"{results_path}/summary.txt", "w") as outfile:
             outfile.write(f"Summary of {self.numComponentsSlider.value()} component {self.algorithmGroup.checkedButton().text()} analysis of {self.filetypeGroup.checkedButton().text()[1:]} in ...{self.indirLabel.text()[-51:]}\n\n")
@@ -975,7 +868,7 @@ class MainWindow(qtw.QMainWindow):
             for i in range(self.numComponentsSlider.value()-1):
                 outfile.write(f"Component {i+1},")
             outfile.write(f"Component {self.numComponentsSlider.value()}\n")
-                
+
             for i in range(len(transformed)):
                 for j in range(len(transformed[0])-1):
                     outfile.write(f"{transformed[i][j]},")
@@ -998,7 +891,7 @@ class MainWindow(qtw.QMainWindow):
     def export_results(self, angles, fitted, transformed, reconstructed, fig, errors=None):
         if not os.path.exists("results"):
             os.mkdir("results")
-        
+
         export_time = datetime.now().strftime("%y%m%d-%H%M%S")
         results_path = f"results/{export_time}_{self.algorithmGroup.checkedButton().text()}_{self.numComponentsSlider.value()}_{self.filetypeGroup.checkedButton().text()[1:]}"
         os.mkdir(results_path)
@@ -1015,33 +908,32 @@ class AboutDialog(qtw.QDialog):
         self.setWindowTitle("About BaSSET")
         self.setWindowIcon(qtg.QIcon(f"{parent.configpath}/assets/icon.png"))
         self.setWindowFlags(self.windowFlags() & ~qtc.Qt.WindowContextHelpButtonHint)
-        
+
         layout = qtw.QVBoxLayout()
-        
+
         self.program = qtw.QLabel("<h1>BaSSET</h1>")
         self.program.setAlignment(qtc.Qt.AlignCenter)
 
         self.logo = qtw.QLabel()
         self.logo.setPixmap(qtg.QPixmap(f"{parent.configpath}/assets/icon.png"))
         self.logo.setAlignment(qtc.Qt.AlignTop | qtc.Qt.AlignCenter)
-        
+
         self.version = qtw.QLabel("Version: ALPHA_DEV")
         self.version.setAlignment(qtc.Qt.AlignCenter)
 
         self.company = qtw.QLabel("Developed at NAFUMA Battery - University of Oslo")
         self.company.setAlignment(qtc.Qt.AlignCenter)
         self.company.resize(self.company.sizeHint())
-        
+
         self.funding = qtw.QLabel("Funded by the Research Council of Norway<br>"
         "(<a href='https://prosjektbanken.forskningsradet.no/en/project/FORISS/325316'>BaSSET 325316</a>)")
         self.funding.setAlignment(qtc.Qt.AlignCenter)
         self.funding.setTextFormat(qtc.Qt.RichText)
         self.funding.setTextInteractionFlags(qtc.Qt.TextBrowserInteraction)
         self.funding.setOpenExternalLinks(True)
-        
+
         self.developer = qtw.QLabel("Eira T. North")
         self.developer.setAlignment(qtc.Qt.AlignCenter)
-        
 
         layout.addWidget(self.program)
         layout.addWidget(self.logo)
