@@ -1,5 +1,4 @@
 BaSSET/config.dat
-results*
 .venv*
 *.egg-info
 dist*
