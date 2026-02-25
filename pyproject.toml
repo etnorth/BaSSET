@@ -8,7 +8,6 @@ version = "1.0.0-alpha"
 dependencies = [
     "natsort",
     "numpy",
-    "pandas",
     "matplotlib",
     "scikit-learn",
     "PyQt5"

@@ -2,18 +2,18 @@ import sys
 import os
 from glob import glob
 from datetime import datetime
+from re import search
 
 from natsort import natsorted
 import numpy as np
-import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
+from sklearn.decomposition import PCA, NMF, FastICA
+#from diffpy.stretched_nmf.snmf_class import SNMFOptimizer 
 import PyQt5.QtCore as qtc
 import PyQt5.QtWidgets as qtw
 import PyQt5.QtGui as qtg
 
-from sklearn.decomposition import PCA, NMF, FastICA
-#from diffpy.stretched_nmf.snmf_class import SNMFOptimizer 
 
 import platform
 if platform.system() == "Windows":
@@ -24,9 +24,29 @@ if platform.system() == "Windows":
 uio_palette = ['#86A4F7','#2EC483','#FB6666']
 uio_cmp = LinearSegmentedColormap.from_list('UiO colourmap',uio_palette)
 
-def import_dataset(dir, filetype, auto_filetype=False):
+def import_data(filename):
     """
-    Imports files from chosen directory of chosen filetype
+    Takes in a filename (str) to find continous two-column datasets, returning each column as a numpy array
+    """
+    try:
+        x, y = np.loadtxt(filename, unpack=True, comments='#', usecols=(0,1))
+        return x, y
+    except ValueError:
+        print("Couldn't read file with deafult # comments, reading file line by line")
+        pass
+    with open(filename, "r") as infile:
+        lines = infile.readlines()
+        for i, line in enumerate(lines):
+            if not line:
+                continue
+            if search("[0-9]", line.replace(' ','')[0]): # Checks if the first non-whitespace symbol is a number
+                x, y = np.loadtxt(filename, unpack=True, skiprows=i, usecols=(0,1)) # Skips all lines above curren
+                return x, y
+        raise ValueError(f"Couldn't find data in {filename}")
+
+def import_dataset(dir, filetype=None, auto_filetype=True):
+    """
+    Imports data from all files in chosen directory of chosen / most popular filetype
     """
 
     if auto_filetype: # Find most popular filetype in folder
@@ -43,30 +63,25 @@ def import_dataset(dir, filetype, auto_filetype=False):
             raise NotImplementedError
         print(f"Most common filetype in supplied directory is {filetype}")
 
-    print(f"Looking for files in {dir} of type {filetype}")
+    print(f"Looking for files in \"...{dir[-41:-1]}\" of type {filetype}")
     filenames = natsorted(glob(f"{dir}*{filetype}"))
     print(f"Found {len(filenames)} files of filetype {filetype}")
-    dataset_dict = {} #np.empty(len(filenames), dtype=pd.DataFrame)
 
-    
-    if filetype=='.xy' or filetype=='.gr':
-        names = ["angle", "intensity"]
-    elif filetype=='.xye' or filetype=='.dat':
-        names = ["angle", "intensity", "error"]
-    else:
-        print("The filetype is not supported! Yet..?")
-        raise NotImplementedError
+    x_data = []
+    y_data = []
 
-    for i, filename in enumerate(filenames):
-            dataset_dict[filename] = pd.read_csv(filename, engine='python', sep=' +', names=names)
+    for filename in filenames:
+       x, y = import_data(filename)
+       x_data.append(x)
+       y_data.append(y)
 
-    print("Dataset inported")
-    return dataset_dict
+    print("Dataset imported")
+    return np.array(x_data), np.array(y_data)
 
 def theta_to_Q(angles, wavelength):
     return ((4*np.pi) / wavelength) * np.sin(np.deg2rad(angles)/2)
 
-def PCA_analysis(angles, intensities, numComponents, whiten, svd_solver, tol, iterated_power, n_oversamples, power_iteration_normalizer):
+def PCA_analysis(intensities, numComponents, whiten, svd_solver, tol, iterated_power, n_oversamples, power_iteration_normalizer):
     n_components = 10 # Setting this higher than the user's number ensures reporting of explained variances
     pca = PCA(n_components = n_components, whiten=whiten, svd_solver=svd_solver, tol=tol, iterated_power=iterated_power, n_oversamples=n_oversamples, power_iteration_normalizer=power_iteration_normalizer)
     X = pca.fit(intensities)
@@ -75,7 +90,7 @@ def PCA_analysis(angles, intensities, numComponents, whiten, svd_solver, tol, it
 
     return X, transformed, reconstructed
 
-def NMF_analysis(angles, intensities, numComponents, init, solver, beta_loss, tol, max_iter, alpha_W, alpha_H, l1_ratio):
+def NMF_analysis(intensities, numComponents, init, solver, beta_loss, tol, max_iter, alpha_W, alpha_H, l1_ratio):
     n_components_list = np.arange(1, 10+1, dtype=int)
     errors = np.empty(len(n_components_list))
     X = None
@@ -93,7 +108,7 @@ def NMF_analysis(angles, intensities, numComponents, init, solver, beta_loss, to
 
     return X, transformed, reconstructed, errors
 
-def ICA_analysis(angles, intensities, numComponents, algorithm, whiten, fun, max_iter, tol, whiten_solver):
+def ICA_analysis(intensities, numComponents, algorithm, whiten, fun, max_iter, tol, whiten_solver):
     ica = FastICA(n_components = numComponents, algorithm=algorithm, whiten=whiten, fun=fun, max_iter=max_iter, tol=tol, whiten_solver=whiten_solver)
     X = ica.fit(intensities)
     transformed = ica.transform(intensities)
@@ -148,7 +163,6 @@ class MainWindow(qtw.QMainWindow):
 
         self.rButton = qtw.QRadioButton("r (Å)", self.centralWidget)
         self.rButton.setGeometry(75, 60, 50, 20)
-        self.rButton.setDisabled(True)
 
         self.thetaButton = qtw.QRadioButton("2θ (°)", self.centralWidget)
         self.thetaButton.setGeometry(10, 80, 55, 20)
@@ -163,37 +177,6 @@ class MainWindow(qtw.QMainWindow):
         self.wavelengthWidget.setMinimum(0)
         self.wavelengthWidget.setSingleStep(0.000001)
         self.wavelengthWidget.setSuffix(' Å')
-
-        self.filetypeGroup = qtw.QButtonGroup(self.centralWidget)
-        self.filetypeTitle = qtw.QLabel("Filetype", self.centralWidget)
-        self.filetypeTitle.setGeometry(40, 110, 50, 20)
-
-        self.xyButton = qtw.QRadioButton(".xy", self.centralWidget)
-        self.xyButton.setGeometry(10, 130, 40, 20)
-        self.xyButton.setChecked(True)
-        self.xyButton.setToolTip("XRD: Two-column plain text file")
-
-        self.xyeButton = qtw.QRadioButton(".xye", self.centralWidget)
-        self.xyeButton.setGeometry(60, 130, 40, 20)
-        self.xyeButton.setToolTip("XRD: three-column plain text file")
-
-        self.datButton = qtw.QRadioButton(".dat", self.centralWidget)
-        self.datButton.setGeometry(10, 150, 40, 20)
-        self.datButton.setToolTip("XRD: three-column plain text file")
-
-        self.grButton = qtw.QRadioButton(".gr", self.centralWidget)
-        self.grButton.setGeometry(60, 150, 40, 20)
-        self.grButton.setToolTip("PDF: two-column plain text file")
-
-        self.filetypeGroup.addButton(self.xyButton)
-        self.filetypeGroup.addButton(self.xyButton)
-        self.filetypeGroup.addButton(self.xyeButton)
-        self.filetypeGroup.addButton(self.datButton)
-        self.filetypeGroup.addButton(self.grButton)
-
-        self.autofiletypeCheck = qtw.QCheckBox("auto", self.centralWidget)
-        self.autofiletypeCheck.setGeometry(35, 170, 40, 20)
-        self.autofiletypeCheck.setToolTip("Selects the most popular filetype in the chosen directory")
 
         #############################
         ##### Algorithm widgets #####
@@ -547,8 +530,6 @@ class MainWindow(qtw.QMainWindow):
         self.indirButton.clicked.connect(self.update_config_file)
         self.inputformatGroup.buttonClicked.connect(self.update_config_file)
         self.wavelengthWidget.valueChanged.connect(self.update_config_file)
-        self.filetypeGroup.buttonClicked.connect(self.update_config_file)
-        self.autofiletypeCheck.clicked.connect(self.update_config_file)
         self.algorithmGroup.buttonClicked.connect(self.algorithm_widgets)
         self.algorithmGroup.buttonClicked.connect(self.update_config_file)
         self.numComponentsSlider.valueChanged.connect(lambda: self.numComponentsLabel.setText(str(self.numComponentsSlider.value())))
@@ -643,7 +624,6 @@ class MainWindow(qtw.QMainWindow):
         self.file_submenu_recent.insertAction(self.file_submenu_recent.actions()[0], recentdir_button)
 
     def algorithm_widgets(self):
-
         match self.algorithmGroup.checkedButton().text():
             case "PCA":
                 self.PCAwhitenCheck.show()
@@ -747,19 +727,6 @@ class MainWindow(qtw.QMainWindow):
                             self.wavelengthWidget.blockSignals(True) # blockSignals ensures .setValue doesn't trigger valeuChanged and updates the config, overwriting the load file
                             self.wavelengthWidget.setValue(float(value))
                             self.wavelengthWidget.blockSignals(False)
-                        case "Data filetype":
-                            for button in self.filetypeGroup.buttons():
-                                if value == button.text():
-                                    button.setChecked(True)
-                            if value not in [button.text() for button in self.filetypeGroup.buttons()]:
-                                raise ValueError(f"Did not recognize \"{value}\" as a data filetype")
-                        case "Auto filetype":
-                            if value=="True":
-                                self.autofiletypeCheck.setChecked(True)
-                            elif value=="False":
-                                self.autofiletypeCheck.setChecked(False)
-                            else:
-                                raise ValueError(f"Did not recognize \"{value}\" as True or False")
                         case "Algorithm":
                             for button in self.algorithmGroup.buttons():
                                 if value == button.text():
@@ -772,48 +739,21 @@ class MainWindow(qtw.QMainWindow):
                             self.numComponentsLabel.setText(value)
                             self.numComponentsSlider.blockSignals(False)
                         case _:
-                            print("\"{line}\" could not be parsed")
+                            print(f"\"{line}\" could not be parsed")
 
     def update_config_file(self):
-        if self.autofiletypeCheck.isChecked():
-            for widget in self.filetypeGroup.buttons():
-                widget.setDisabled(True)
-            self.qButton.setDisabled(False)
-            self.thetaButton.setDisabled(False)
-            self.rButton.setDisabled(False)
-        else:
-            for widget in self.filetypeGroup.buttons():
-                widget.setDisabled(False)
-
-        if self.filetypeGroup.checkedButton().text() == '.gr':
-            self.qButton.setDisabled(True)
-            self.thetaButton.setDisabled(True)
-            self.rButton.setDisabled(False)
-            self.rButton.setChecked(True)
-        else:
-            self.qButton.setDisabled(False)
-            self.thetaButton.setDisabled(False)
-            self.rButton.setDisabled(True)
-
         with open(self.configfile, "w", encoding='utf-8') as outfile:
             outfile.write(f"Current file directory: {self.indirLabel.text() if self.indirLabel.text()!='Select the folder containing your data files' else ''}\n")
             outfile.write(f"Recent directories: {', '.join(action.text() for action in self.file_submenu_recent.actions()[:-2])}\n")
             outfile.write(f"Input format: {self.inputformatGroup.checkedButton().text()}\n")
             outfile.write(f"Wavelength: {self.wavelengthWidget.value():.6f}\n")
-            outfile.write(f"Data filetype: {self.filetypeGroup.checkedButton().text()}\n")
-            outfile.write(f"Auto filetype: {self.autofiletypeCheck.isChecked()}\n")
             outfile.write(f"Algorithm: {self.algorithmGroup.checkedButton().text()}\n")
             outfile.write(f"Number of components: {self.numComponentsSlider.value()}\n")
 
     def run_analysis(self):
-        if self.filetypeGroup.checkedButton().text() != '.gr' and self.inputformatGroup.checkedButton().text() == "r (Å)":
-            print(f"The selected filetype ({self.filetypeGroup.checkedButton().text()}) is not compatible with the input format {self.inputformatGroup.checkedButton().text()}")
-            return
         print("Beginning analysis...")
-        dataset = import_dataset(self.indirLabel.text()+"\\", self.filetypeGroup.checkedButton().text(), self.autofiletypeCheck.isChecked())
+        angles, intensities = import_dataset(self.indirLabel.text()+"\\")#, self.filetypeGroup.checkedButton().text(), self.autofiletypeCheck.isChecked())
         numComponents = self.numComponentsSlider.value()
-        angles = np.array([values["angle"].to_numpy() for values in dataset.values()])
-        intensities = np.array([values["intensity"].to_numpy() for values in dataset.values()])
 
         if self.inputformatGroup.checkedButton().text() == "2θ (°)":
             angles = theta_to_Q(angles, self.wavelengthWidget.value())
@@ -917,7 +857,7 @@ class MainWindow(qtw.QMainWindow):
 
     def write_summary(self, results_path, errors=None):
         with open(f"{results_path}/summary.txt", "w") as outfile:
-            outfile.write(f"Summary of {self.numComponentsSlider.value()} component {self.algorithmGroup.checkedButton().text()} analysis of {self.filetypeGroup.checkedButton().text()[1:]} in ...{self.indirLabel.text()[-51:]}\n\n")
+            outfile.write(f"Summary of {self.numComponentsSlider.value()} component {self.algorithmGroup.checkedButton().text()} analysis of data in ...{self.indirLabel.text()[-51:]}\n\n")
             outfile.write("The following algorithm parameters where used:\n")
             match self.algorithmGroup.checkedButton().text():
                 case "PCA":
@@ -949,17 +889,10 @@ class MainWindow(qtw.QMainWindow):
 
     def write_components(self, results_path, angles, fitted):
         os.mkdir(f"{results_path}/components")
-        match self.filetypeGroup.checkedButton().text():
-            case ".xy" | ".gr":
-                for i, component in enumerate(fitted.components_):
-                    with open(f"{results_path}/components/component_{i+1}{self.filetypeGroup.checkedButton().text()}", "w") as outfile:
-                        for j in range(len(angles[i])):
-                            outfile.write(f"{angles[i][j]}\t{component[j]}\n")
-            case ".xye" | ".dat":
-                for i, component in enumerate(fitted.components_):
-                        with open(f"{results_path}/components/component_{i+1}{self.filetypeGroup.checkedButton().text()}", "w") as outfile:
-                            for j in range(len(angles[i])):
-                                outfile.write(f"{angles[i][j]}\t{component[j]}\t0\n")
+        for i, component in enumerate(fitted.components_):
+            with open(f"{results_path}/components/component_{i+1}.xy", "w") as outfile:
+                for j in range(len(angles[i])):
+                    outfile.write(f"{angles[i][j]}\t{component[j]}\n")
 
     def write_scores(self, results_path, transformed):
         with open(f"{results_path}/scores.csv", "w") as outfile:
@@ -974,24 +907,17 @@ class MainWindow(qtw.QMainWindow):
 
     def write_reconstructions(self, results_path, angles, reconstructed):
         os.mkdir(f"{results_path}/reconstructions")
-        match self.filetypeGroup.checkedButton().text():
-            case ".xy" | ".gr":
-                for i in range(len(reconstructed)):
-                    with open(f"{results_path}/reconstructions/scan_{i+1}{self.filetypeGroup.checkedButton().text()}", "w") as outfile:
-                        for j in range(len(angles[i])):
-                            outfile.write(f"{angles[i][j]}\t{reconstructed[i][j]}\n")
-            case ".xye" | ".dat":
-                for i in range(len(reconstructed)):
-                        with open(f"{results_path}/reconstructions/scan_{i+1}{self.filetypeGroup.checkedButton().text()}", "w") as outfile:
-                            for j in range(len(angles[i])):
-                                outfile.write(f"{angles[i][j]}\t{reconstructed[i][j]}\t0\n")
+        for i in range(len(reconstructed)):
+            with open(f"{results_path}/reconstructions/scan_{i+1}.xy", "w") as outfile:
+                for j in range(len(angles[i])):
+                    outfile.write(f"{angles[i][j]}\t{reconstructed[i][j]}\n")
 
     def export_results(self, angles, fitted, transformed, reconstructed, fig, errors=None):
         if not os.path.exists(f"{self.indirLabel.text()}/BaSSET_results"):
             os.mkdir(f"{self.indirLabel.text()}/BaSSET_results")
 
         export_time = datetime.now().strftime("%y%m%d-%H%M%S")
-        results_path = f"{self.indirLabel.text()}/BaSSET_results/{export_time}_{self.algorithmGroup.checkedButton().text()}_{self.numComponentsSlider.value()}_{self.filetypeGroup.checkedButton().text()[1:]}"
+        results_path = f"{self.indirLabel.text()}/BaSSET_results/{export_time}_{self.algorithmGroup.checkedButton().text()}_{self.numComponentsSlider.value()}"
         os.mkdir(results_path)
 
         fig.savefig(f"{results_path}/overview.jpg")
