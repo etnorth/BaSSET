@@ -44,24 +44,23 @@ def import_data(filename):
                 return x, y
         raise ValueError(f"Couldn't find data in {filename}")
 
-def import_dataset(dir, filetype=None, auto_filetype=True):
+def import_dataset(dir):
     """
     Imports data from all files in chosen directory of chosen / most popular filetype
     """
 
-    if auto_filetype: # Find most popular filetype in folder
-        filetypes = {}
-        for file_extension in [os.path.splitext(filename)[-1] for filename in glob(f"{dir}*")]: # Gets extension of each filename in folder
-            if file_extension in filetypes:
-                filetypes[file_extension] += 1
-            else:
-                filetypes[file_extension] = 1
-        filetype = max(filetypes)
-        popular_filetypes = [key for key, value in filetypes.items() if value == filetypes[filetype]] # Checks if there are multiple equally popular file extensions
-        if len(popular_filetypes)>1:
-            print(f"Multiple equally popular filetypes found: ({popular_filetypes}). Disable 'auto' and re-run")
-            raise NotImplementedError
-        print(f"Most common filetype in supplied directory is {filetype}")
+    filetypes = {}
+    for file_extension in [os.path.splitext(filename)[-1] for filename in glob(f"{dir}*")]: # Gets extension of each filename in folder
+        if file_extension in filetypes:
+            filetypes[file_extension] += 1
+        else:
+            filetypes[file_extension] = 1
+    filetype = max(filetypes)
+    popular_filetypes = [key for key, value in filetypes.items() if value == filetypes[filetype]] # Checks if there are multiple equally popular file extensions
+    if len(popular_filetypes)>1:
+        print(f"Multiple equally popular filetypes found: ({popular_filetypes}). Disable 'auto' and re-run")
+        raise NotImplementedError
+    print(f"Most common filetype in supplied directory is {filetype}")
 
     print(f"Looking for files in \"...{dir[-41:-1]}\" of type {filetype}")
     filenames = natsorted(glob(f"{dir}*{filetype}"))
@@ -71,9 +70,9 @@ def import_dataset(dir, filetype=None, auto_filetype=True):
     y_data = []
 
     for filename in filenames:
-       x, y = import_data(filename)
-       x_data.append(x)
-       y_data.append(y)
+        x, y = import_data(filename)
+        x_data.append(x)
+        y_data.append(y)
 
     print("Dataset imported")
     return np.array(x_data), np.array(y_data)
@@ -177,6 +176,11 @@ class MainWindow(qtw.QMainWindow):
         self.wavelengthWidget.setMinimum(0)
         self.wavelengthWidget.setSingleStep(0.000001)
         self.wavelengthWidget.setSuffix(' Å')
+        self.inputformatGroup.buttonClicked.connect(
+            lambda button: self.wavelengthWidget.setEnabled(True)
+            if button==self.thetaButton
+            else self.wavelengthWidget.setDisabled(True)
+        )
 
         #############################
         ##### Algorithm widgets #####
@@ -344,18 +348,12 @@ class MainWindow(qtw.QMainWindow):
         "cd (default): Coordinate Descent\n" \
         "mu: Multiplicative Update")
 
-        # Only for 'mu' solver 
-        self.NMFbeta_lossDropdown = qtw.QComboBox(self.centralWidget)
-        self.NMFbeta_lossDropdown.addItems(["frobenius", "kullback-leibler"]) # "itakura-saito" not included as it cannot have zeros in input data, which XRD/PDF often can have
-        self.NMFbeta_lossDropdown.setGeometry(245, 180, 95, 20)
-        self.NMFbeta_lossDropdown.setToolTip("Beta divergence to be minimized," \
-        "measuring the distance between X and the dot product WH using 'mu':\n" \
-        "frobenius is default")
-        self.NMFsolverDropdown.currentTextChanged.connect(
-            lambda currentText: self.NMFbeta_lossDropdown.show()
-            if currentText=='mu'
-            else self.NMFbeta_lossDropdown.hide()
-        )
+        self.NMFmax_iterSpinbox = qtw.QSpinBox(self.centralWidget)
+        self.NMFmax_iterSpinbox.setMinimum(0)
+        self.NMFmax_iterSpinbox.setMaximum(5000)
+        self.NMFmax_iterSpinbox.setValue(2500)
+        self.NMFmax_iterSpinbox.setGeometry(245, 180, 50, 20)
+        self.NMFmax_iterSpinbox.setToolTip("Maximum number of iterations before timing out")
 
         self.NMFtolSpinbox = qtw.QSpinBox(self.centralWidget)
         self.NMFtolSpinbox.setPrefix("1e")
@@ -366,12 +364,34 @@ class MainWindow(qtw.QMainWindow):
         self.NMFtolSpinbox.setGeometry(130, 205, 55, 20)
         self.NMFtolSpinbox.setToolTip("Tolerance of the stopping condition")
 
-        self.NMFmax_iterSpinbox = qtw.QSpinBox(self.centralWidget)
-        self.NMFmax_iterSpinbox.setMinimum(0)
-        self.NMFmax_iterSpinbox.setMaximum(5000)
-        self.NMFmax_iterSpinbox.setValue(2500)
-        self.NMFmax_iterSpinbox.setGeometry(190, 205, 50, 20)
-        self.NMFmax_iterSpinbox.setToolTip("Maximum number of iterations before timing out")
+        # Used in 'cd' solver
+        self.NMFl1_ratioDSpinbox = qtw.QDoubleSpinBox(self.centralWidget)
+        self.NMFl1_ratioDSpinbox.setMinimum(0)
+        self.NMFl1_ratioDSpinbox.setMaximum(1)
+        self.NMFl1_ratioDSpinbox.setValue(0)
+        self.NMFl1_ratioDSpinbox.setSingleStep(0.05)
+        self.NMFl1_ratioDSpinbox.setGeometry(190, 205, 45, 20)
+        self.NMFl1_ratioDSpinbox.setToolTip("Regularization mixing parameter:\n" \
+        "(0, default): elementwise l2 penalty aka. Frobenius Norm\n"
+        "(1): elementwwise l1 penalty (1)\n")
+        self.NMFsolverDropdown.currentTextChanged.connect(
+            lambda currentText: self.NMFl1_ratioDSpinbox.show()
+            if currentText=='cd'
+            else self.NMFl1_ratioDSpinbox.hide()
+        )
+
+        # Only for 'mu' solver 
+        self.NMFbeta_lossDropdown = qtw.QComboBox(self.centralWidget)
+        self.NMFbeta_lossDropdown.addItems(["frobenius", "kullback-leibler"]) # "itakura-saito" not included as it cannot have zeros in input data, which XRD/PDF often can have
+        self.NMFbeta_lossDropdown.setGeometry(190, 205, 95, 20)
+        self.NMFbeta_lossDropdown.setToolTip("Beta divergence to be minimized," \
+        "measuring the distance between X and the dot product WH using 'mu':\n" \
+        "frobenius is default")
+        self.NMFsolverDropdown.currentTextChanged.connect(
+            lambda currentText: self.NMFbeta_lossDropdown.show()
+            if currentText=='mu'
+            else self.NMFbeta_lossDropdown.hide()
+        )
 
         self.NMFalpha_WDSpinbox = qtw.QDoubleSpinBox(self.centralWidget)
         self.NMFalpha_WDSpinbox.setMinimum(0)
@@ -413,23 +433,7 @@ class MainWindow(qtw.QMainWindow):
             else None
         )
 
-        # Used in 'cd' solver
-        self.NMFl1_ratioDSpinbox = qtw.QDoubleSpinBox(self.centralWidget)
-        self.NMFl1_ratioDSpinbox.setMinimum(0)
-        self.NMFl1_ratioDSpinbox.setMaximum(1)
-        self.NMFl1_ratioDSpinbox.setValue(0)
-        self.NMFl1_ratioDSpinbox.setSingleStep(0.05)
-        self.NMFl1_ratioDSpinbox.setGeometry(245, 180, 45, 20)
-        self.NMFl1_ratioDSpinbox.setToolTip("Regularization mixing parameter:\n" \
-        "(0, default): elementwise l2 penalty aka. Frobenius Norm\n"
-        "(1): elementwwise l1 penalty (1)\n")
-        self.NMFsolverDropdown.currentTextChanged.connect(
-            lambda currentText: self.NMFl1_ratioDSpinbox.show()
-            if currentText=='cd'
-            else self.NMFl1_ratioDSpinbox.hide()
-        )
-
-        #Ignored NMF parmeters:
+        # Ignored NMF parmeters:
         # random_state
         # verbose
         # shuffle
@@ -496,17 +500,20 @@ class MainWindow(qtw.QMainWindow):
         self.runAnalysisButton = qtw.QPushButton("Run analysis", self.centralWidget)
         self.runAnalysisButton.setGeometry(330, 40, 120, 40)
 
+        self.export_results_checkbox = qtw.QCheckBox("Export results", self.centralWidget)
+        self.export_results_checkbox.setGeometry(345, 85, 100, 20)
+
         self.plot_xmin_DSpinBox = qtw.QDoubleSpinBox(self.centralWidget)
         self.plot_xmin_DSpinBox.setMinimum(0)
         self.plot_xmin_DSpinBox.setMaximum(999)
         self.plot_xmin_DSpinBox.setValue(0)
         self.plot_xmin_DSpinBox.setDecimals(2)
         self.plot_xmin_DSpinBox.setSingleStep(0.01)
-        self.plot_xmin_DSpinBox.setGeometry(330, 85, 60, 20)
+        self.plot_xmin_DSpinBox.setGeometry(330, 110, 60, 20)
         self.plot_xmin_DSpinBox.setToolTip("Minimum x-value in plots")
 
         self.plot_xmin_label = qtw.QLabel("X-axis min", self.centralWidget)
-        self.plot_xmin_label.setGeometry(395, 85, 55, 20)
+        self.plot_xmin_label.setGeometry(395, 110, 55, 20)
 
         self.plot_xmax_DSpinBox = qtw.QDoubleSpinBox(self.centralWidget)
         self.plot_xmax_DSpinBox.setMinimum(0)
@@ -514,14 +521,77 @@ class MainWindow(qtw.QMainWindow):
         self.plot_xmax_DSpinBox.setValue(20)
         self.plot_xmax_DSpinBox.setDecimals(2)
         self.plot_xmax_DSpinBox.setSingleStep(0.01)
-        self.plot_xmax_DSpinBox.setGeometry(330, 110, 60, 20)
+        self.plot_xmax_DSpinBox.setGeometry(330, 135, 60, 20)
         self.plot_xmax_DSpinBox.setToolTip("Maximum x-value in plots")
         
         self.plot_xmin_label = qtw.QLabel("X-axis max", self.centralWidget)
-        self.plot_xmin_label.setGeometry(395, 110, 55, 20)
+        self.plot_xmin_label.setGeometry(395, 135, 55, 20)
 
-        self.export_results_checkbox = qtw.QCheckBox("Export results", self.centralWidget)
-        self.export_results_checkbox.setGeometry(330, 135, 100, 20)
+        self.reconstruct_label = qtw.QLabel("Plot Reconstruction Scan", self.centralWidget)
+        self.reconstruct_label.setGeometry(335, 160, 120, 20)
+
+        self.reconstruct_widgets = []
+
+        self.reconstruct_widget0 = qtw.QSpinBox(self.centralWidget)
+        self.reconstruct_widget0.setMinimum(0)
+        self.reconstruct_widget0.setMaximum(9999)
+        self.reconstruct_widget0.setGeometry(330, 180, 50, 20)
+        self.reconstruct_widget0.setToolTip("If any are '0', will reconstruct uniform distribution of scans")
+        self.reconstruct_widgets.append(self.reconstruct_widget0)
+
+        self.reconstruct_widget1 = qtw.QSpinBox(self.centralWidget)
+        self.reconstruct_widget1.setMinimum(0)
+        self.reconstruct_widget1.setMaximum(9999)
+        self.reconstruct_widget1.setGeometry(395, 180, 50, 20)
+        self.reconstruct_widgets.append(self.reconstruct_widget1)
+        
+        self.reconstruct_widget2 = qtw.QSpinBox(self.centralWidget)
+        self.reconstruct_widget2.setMinimum(0)
+        self.reconstruct_widget2.setMaximum(9999)
+        self.reconstruct_widget2.setGeometry(330, 205, 50, 20)
+        self.reconstruct_widgets.append(self.reconstruct_widget2)
+
+        self.reconstruct_widget3 = qtw.QSpinBox(self.centralWidget)
+        self.reconstruct_widget3.setMinimum(0)
+        self.reconstruct_widget3.setMaximum(9999)
+        self.reconstruct_widget3.setGeometry(395, 205, 50, 20)
+        self.reconstruct_widgets.append(self.reconstruct_widget3)
+
+        self.reconstruct_widget4 = qtw.QSpinBox(self.centralWidget)
+        self.reconstruct_widget4.setMinimum(0)
+        self.reconstruct_widget4.setMaximum(9999)
+        self.reconstruct_widget4.setGeometry(330, 230, 50, 20)
+        self.reconstruct_widgets.append(self.reconstruct_widget4)
+
+        self.reconstruct_widget5 = qtw.QSpinBox(self.centralWidget)
+        self.reconstruct_widget5.setMinimum(0)
+        self.reconstruct_widget5.setMaximum(9999)
+        self.reconstruct_widget5.setGeometry(395, 230, 50, 20)
+        self.reconstruct_widgets.append(self.reconstruct_widget5)
+
+        self.reconstruct_widget6 = qtw.QSpinBox(self.centralWidget)
+        self.reconstruct_widget6.setMinimum(0)
+        self.reconstruct_widget6.setMaximum(9999)
+        self.reconstruct_widget6.setGeometry(330, 255, 50, 20)
+        self.reconstruct_widgets.append(self.reconstruct_widget6)
+
+        self.reconstruct_widget7 = qtw.QSpinBox(self.centralWidget)
+        self.reconstruct_widget7.setMinimum(0)
+        self.reconstruct_widget7.setMaximum(9999)
+        self.reconstruct_widget7.setGeometry(395, 255, 50, 20)
+        self.reconstruct_widgets.append(self.reconstruct_widget7)
+
+        self.reconstruct_widget8 = qtw.QSpinBox(self.centralWidget)
+        self.reconstruct_widget8.setMinimum(0)
+        self.reconstruct_widget8.setMaximum(9999)
+        self.reconstruct_widget8.setGeometry(330, 280, 50, 20)
+        self.reconstruct_widgets.append(self.reconstruct_widget8)
+
+        self.reconstruct_widget9 = qtw.QSpinBox(self.centralWidget)
+        self.reconstruct_widget9.setMinimum(0)
+        self.reconstruct_widget9.setMaximum(9999)
+        self.reconstruct_widget9.setGeometry(395, 280, 50, 20)
+        self.reconstruct_widgets.append(self.reconstruct_widget9)
 
         ################################
         ##### Function connections #####
@@ -530,10 +600,11 @@ class MainWindow(qtw.QMainWindow):
         self.indirButton.clicked.connect(self.update_config_file)
         self.inputformatGroup.buttonClicked.connect(self.update_config_file)
         self.wavelengthWidget.valueChanged.connect(self.update_config_file)
-        self.algorithmGroup.buttonClicked.connect(self.algorithm_widgets)
+        self.algorithmGroup.buttonClicked.connect(self.display_algorithm_widgets)
         self.algorithmGroup.buttonClicked.connect(self.update_config_file)
-        self.numComponentsSlider.valueChanged.connect(lambda: self.numComponentsLabel.setText(str(self.numComponentsSlider.value())))
+        self.numComponentsSlider.valueChanged.connect(lambda value: self.numComponentsLabel.setText(str(value)))
         self.numComponentsSlider.valueChanged.connect(self.update_config_file)
+        self.numComponentsSlider.valueChanged.connect(self.display_reconstruction_widgets)
         self.runAnalysisButton.clicked.connect(self.run_analysis)
 
         ########################
@@ -586,7 +657,8 @@ class MainWindow(qtw.QMainWindow):
             self.read_config_file()
             self.update_config_file()
 
-        self.algorithm_widgets()
+        self.display_algorithm_widgets()
+        self.display_reconstruction_widgets()
 
     def close_event(self, event):
         qtw.QApplication.quit()
@@ -599,6 +671,13 @@ class MainWindow(qtw.QMainWindow):
             self.about_window.close()
             self.about_window = None
 
+    def display_reconstruction_widgets(self):
+        """Displays widgets for reconstructions equaling number of components, and hides the rest"""
+        for widget in self.reconstruct_widgets[:self.numComponentsSlider.value()]:
+            widget.show()
+        for widget in self.reconstruct_widgets[self.numComponentsSlider.value():]:
+            widget.hide()
+
     def set_indir(self):
         if self.indirLabel.text() == "Select the folder containing your data files":
             indir = str(qtw.QFileDialog.getExistingDirectory(self))
@@ -608,7 +687,6 @@ class MainWindow(qtw.QMainWindow):
             return None
         self.indirLabel.setText(indir)
         self.add_recentdir(indir)
-        #import_data(self.indirLabel.text()+"\\", self.filetypeGroup.checkedButton().text())
 
     def add_recentdir(self, recentdir):
         recentdir_button = qtw.QAction(recentdir, self)
@@ -623,7 +701,7 @@ class MainWindow(qtw.QMainWindow):
             return None
         self.file_submenu_recent.insertAction(self.file_submenu_recent.actions()[0], recentdir_button)
 
-    def algorithm_widgets(self):
+    def display_algorithm_widgets(self):
         match self.algorithmGroup.checkedButton().text():
             case "PCA":
                 self.PCAwhitenCheck.show()
@@ -760,7 +838,7 @@ class MainWindow(qtw.QMainWindow):
 
         match self.algorithmGroup.checkedButton().text():
             case "PCA":
-                fitted, transformed, reconstructed = PCA_analysis(angles, intensities, numComponents,
+                fitted, transformed, reconstructed = PCA_analysis(intensities, numComponents,
                                                                   whiten=self.PCAwhitenCheck.isChecked(),
                                                                   svd_solver=self.PCAsolverDropdown.currentText(),
                                                                   tol=10**(self.PCAtolSpinbox.value()),
@@ -769,7 +847,7 @@ class MainWindow(qtw.QMainWindow):
                                                                   power_iteration_normalizer=self.PCApower_iteration_normalizerDropdown.currentText())
                 errors = None
             case "NMF":
-                fitted, transformed, reconstructed, errors = NMF_analysis(angles, intensities, numComponents,
+                fitted, transformed, reconstructed, errors = NMF_analysis(intensities, numComponents,
                                                                           init=self.NMFinitDropdown.currentText(),
                                                                           solver=self.NMFsolverDropdown.currentText(),
                                                                           beta_loss=self.NMFbeta_lossDropdown.currentText(),
@@ -779,7 +857,7 @@ class MainWindow(qtw.QMainWindow):
                                                                           alpha_H='same' if self.NMFalpha_HsameCheckbox.isChecked() else self.NMFalpha_HDSpinbox.value(),
                                                                           l1_ratio=self.NMFl1_ratioDSpinbox.value())
             case "ICA":
-                fitted, transformed, reconstructed = ICA_analysis(angles, intensities, numComponents,
+                fitted, transformed, reconstructed = ICA_analysis(intensities, numComponents,
                                                                   algorithm=self.ICAalgorithmDropdown.currentText(),
                                                                   whiten= False if self.ICAwhitenDropdown.currentText()=='False' else self.ICAwhitenDropdown.currentText(),
                                                                   fun=self.ICAfunDropdown.currentText(),
@@ -804,9 +882,15 @@ class MainWindow(qtw.QMainWindow):
         else:
             xlabel = self.inputformatGroup.checkedButton().text()
 
-        
-        reconNum = list(np.linspace(0, len(reconstructed), numComponents-1, endpoint=False, dtype=int))
-        reconNum.append(len(reconstructed)-1)  # By using numComponents-1 and appending the end-point we get first and last scan
+        reconNum = []
+        for widget in self.reconstruct_widgets:
+            if widget.isVisible():
+                reconNum.append(widget.value()-1)
+
+        if any(x==-1 for x in reconNum): # If any reconstuction widgets are 0, meaning -1 due to the line above
+            reconNum = list(np.linspace(0, len(reconstructed), numComponents-1, endpoint=False, dtype=int))
+            reconNum.append(len(reconstructed)-1)  # By using numComponents-1 and appending the end-point we get first and last scan
+
         colors = uio_cmp(np.linspace(0, 1, numComponents))
 
         fig, axs = plt.subplots(3, plotwidth, layout="constrained")#, gridspec_kw = {"hspace":0.1})
@@ -834,6 +918,8 @@ class MainWindow(qtw.QMainWindow):
 
         axs[1][numComponents-1].legend()
 
+        for i in range(len(reconNum)):
+            axs[2][0].axvline(reconNum[i]+1, color="k", linestyle=":", label="Scans" if i==0 else '')
         axs[2][0].ticklabel_format(axis="y", style="sci", scilimits=[0,0])
         axs[2][0].legend()
         axs[2][0].set_title("Scores")
@@ -853,11 +939,11 @@ class MainWindow(qtw.QMainWindow):
 
         if self.export_results_checkbox.isChecked():
             print("Exporting results")
-            self.export_results(angles, fitted, transformed, reconstructed, fig, errors)
+            self.export_results(angles, intensities, fitted, transformed, reconstructed, fig, errors)
 
     def write_summary(self, results_path, errors=None):
         with open(f"{results_path}/summary.txt", "w") as outfile:
-            outfile.write(f"Summary of {self.numComponentsSlider.value()} component {self.algorithmGroup.checkedButton().text()} analysis of data in ...{self.indirLabel.text()[-51:]}\n\n")
+            outfile.write(f"Summary of {self.numComponentsSlider.value()} component {self.algorithmGroup.checkedButton().text()} analysis of data in \"...{self.indirLabel.text()[-51:]}\"\n\n")
             outfile.write("The following algorithm parameters where used:\n")
             match self.algorithmGroup.checkedButton().text():
                 case "PCA":
@@ -878,7 +964,7 @@ class MainWindow(qtw.QMainWindow):
                     outfile.write(f"Regularization constant for features: {self.NMFalpha_WDSpinbox.value()}\n")
                     outfile.write(f"Regularization constant for samples: {self.NMFalpha_HDSpinbox.value()}\n") # Should work even if alpha_Hsame=True
                     outfile.write(f"Regularization mixing parameter (0=l2, 1=l1): {self.NMFl1_ratioDSpinbox.value()}\n")
-                    outfile.write(f"\nThe NMF reconstruction error for {self.numComponentsSlider.value()} components was: {errors[self.numComponentsSlider.value()+1]}\n")
+                    outfile.write(f"\nThe NMF reconstruction error for {self.numComponentsSlider.value()} components was: {errors[self.numComponentsSlider.value()+1]:.2f}\n")
                 case "ICA":
                     outfile.write(f"Algorithm: {self.ICAalgorithmDropdown.currentText()}\n")
                     outfile.write(f"Whitening strategy: {self.ICAwhitenDropdown.currentText()}\n")
@@ -886,33 +972,42 @@ class MainWindow(qtw.QMainWindow):
                     outfile.write(f"Functional G form function: {self.ICAfunDropdown.currentText()}\n")
                     outfile.write(f"Maximum number of iterations: {self.ICAmax_iterSpinbox.value()}\n")
                     outfile.write(f"Tolerance: {10**self.ICAtolSpinbox.value()}\n")
+        print("Summary written")
 
     def write_components(self, results_path, angles, fitted):
         os.mkdir(f"{results_path}/components")
         for i, component in enumerate(fitted.components_):
-            with open(f"{results_path}/components/component_{i+1}.xy", "w") as outfile:
+            with open(f"{results_path}/components/component_{i+1:0{2}}.xy", "w") as outfile:
                 for j in range(len(angles[i])):
                     outfile.write(f"{angles[i][j]}\t{component[j]}\n")
+        print("Components written")
 
     def write_scores(self, results_path, transformed):
         with open(f"{results_path}/scores.csv", "w") as outfile:
             for i in range(self.numComponentsSlider.value()-1):
-                outfile.write(f"Component {i+1},")
-            outfile.write(f"Component {self.numComponentsSlider.value()}\n")
+                outfile.write(f"Component {i+1:0{2}},")
+            outfile.write(f"Component {self.numComponentsSlider.value():0{2}}\n")
 
             for i in range(len(transformed)):
                 for j in range(len(transformed[0])-1):
                     outfile.write(f"{transformed[i][j]},")
                 outfile.write(f"{transformed[i][len(transformed[0])-1]}\n")
+        print("Scores written")
 
-    def write_reconstructions(self, results_path, angles, reconstructed):
+    def write_reconstructions(self, results_path, angles, intensities, reconstructed):
         os.mkdir(f"{results_path}/reconstructions")
         for i in range(len(reconstructed)):
-            with open(f"{results_path}/reconstructions/scan_{i+1}.xy", "w") as outfile:
+            with open(f"{results_path}/reconstructions/recon_scan_{i+1:0{4}}.xy", "w") as outfile:
                 for j in range(len(angles[i])):
                     outfile.write(f"{angles[i][j]}\t{reconstructed[i][j]}\n")
+        print("Reconstructions written")
+        for i in range(len(reconstructed)):
+            with open(f"{results_path}/reconstructions/diff_scan_{i+1:0{4}}.xy", "w") as outfile:
+                for j in range(len(angles[i])):
+                    outfile.write(f"{angles[i][j]}\t{intensities[i][j]-reconstructed[i][j]}\n")
+        print("Differences written")
 
-    def export_results(self, angles, fitted, transformed, reconstructed, fig, errors=None):
+    def export_results(self, angles, intensities, fitted, transformed, reconstructed, fig, errors=None):
         if not os.path.exists(f"{self.indirLabel.text()}/BaSSET_results"):
             os.mkdir(f"{self.indirLabel.text()}/BaSSET_results")
 
@@ -924,7 +1019,7 @@ class MainWindow(qtw.QMainWindow):
         self.write_summary(results_path, errors)
         self.write_components(results_path, angles, fitted)
         self.write_scores(results_path, transformed)
-        self.write_reconstructions(results_path, angles, reconstructed)
+        self.write_reconstructions(results_path, angles, intensities, reconstructed)
 
 class AboutDialog(qtw.QDialog):
     def __init__(self, parent=None):
