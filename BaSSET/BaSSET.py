@@ -81,7 +81,7 @@ def theta_to_Q(angles, wavelength):
     return ((4*np.pi) / wavelength) * np.sin(np.deg2rad(angles)/2)
 
 def PCA_analysis(intensities, numComponents, whiten, svd_solver, tol, iterated_power, n_oversamples, power_iteration_normalizer):
-    n_components = 10 # Setting this higher than the user's number ensures reporting of explained variances
+    n_components = min(10,min(np.shape(intensities))) # Setting this higher than the user's number ensures reporting of explained variances
     pca = PCA(n_components = n_components, whiten=whiten, svd_solver=svd_solver, tol=tol, iterated_power=iterated_power, n_oversamples=n_oversamples, power_iteration_normalizer=power_iteration_normalizer)
     X = pca.fit(intensities)
     transformed = pca.transform(intensities)
@@ -1072,6 +1072,9 @@ class AboutDialog(qtw.QDialog):
 def main():
     print("Starting BaSSET...")
     app = qtw.QApplication(sys.argv)
+    font = qtg.QFont("MS Shell Dlg 2")
+    font.setPixelSize(11)
+    app.setFont(font)
 
     window = MainWindow()
     window.show()
