@@ -3,7 +3,7 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "BaSSET"
+name = "BaSSET-UiO"
 version = "1.0.0-alpha"
 dependencies = [
     "natsort",
@@ -32,8 +32,11 @@ classifiers = [
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
 
-[project.gui-scripts]
+[project.scripts]
 basset = "BaSSET.BaSSET:main"
+
+[project.gui-scripts]
+basset-gui = "BaSSET.BaSSET:main"
 
 [tool.setuptools]
 packages = ["BaSSET"]

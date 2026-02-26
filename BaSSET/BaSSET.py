@@ -886,6 +886,9 @@ class MainWindow(qtw.QMainWindow):
         for widget in self.reconstruct_widgets:
             if widget.isVisible():
                 reconNum.append(widget.value()-1)
+        if any(x>len(reconstructed) for x in reconNum):
+            print("Reconstruction scan larger than numer of scan. Defaulting to uniform distribution")
+            reconNum[0]=-1
 
         if any(x==-1 for x in reconNum): # If any reconstuction widgets are 0, meaning -1 due to the line above
             reconNum = list(np.linspace(0, len(reconstructed), numComponents-1, endpoint=False, dtype=int))
