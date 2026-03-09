@@ -90,7 +90,7 @@ def PCA_analysis(intensities, numComponents, whiten, svd_solver, tol, iterated_p
     return X, transformed, reconstructed
 
 def NMF_analysis(intensities, numComponents, init, solver, beta_loss, tol, max_iter, alpha_W, alpha_H, l1_ratio):
-    n_components_list = np.arange(1, 10+1, dtype=int)
+    n_components_list = np.arange(1, min(10,min(np.shape(intensities)))+1, dtype=int)
     errors = np.empty(len(n_components_list))
     X = None
     transformed = None
@@ -182,6 +182,14 @@ class MainWindow(qtw.QMainWindow):
             else self.wavelengthWidget.setDisabled(True)
         )
 
+        self.convert2QCheckbox = qtw.QCheckBox("Convert to Q", self.centralWidget)
+        self.convert2QCheckbox.setGeometry(10, 100, 85, 20)
+        self.inputformatGroup.buttonClicked.connect(
+            lambda button: self.convert2QCheckbox.setEnabled(True)
+            if button==self.thetaButton
+            else self.convert2QCheckbox.setDisabled(True)
+        )
+
         #############################
         ##### Algorithm widgets #####
         #############################
@@ -258,9 +266,9 @@ class MainWindow(qtw.QMainWindow):
 
         # Only for 'arpack' solver
         self.PCAtolSpinbox = qtw.QSpinBox(self.centralWidget)
-        self.PCAtolSpinbox.setPrefix("1e")
-        self.PCAtolSpinbox.setMinimum(-20)
-        self.PCAtolSpinbox.setMaximum(0)
+        self.PCAtolSpinbox.setPrefix("1e -")
+        self.PCAtolSpinbox.setMinimum(0)
+        self.PCAtolSpinbox.setMaximum(20)
         self.PCAtolSpinbox.setValue(0)
         self.PCAtolSpinbox.setSingleStep(1)
         self.PCAtolSpinbox.setGeometry(130, 205, 50, 20)
@@ -356,10 +364,10 @@ class MainWindow(qtw.QMainWindow):
         self.NMFmax_iterSpinbox.setToolTip("Maximum number of iterations before timing out")
 
         self.NMFtolSpinbox = qtw.QSpinBox(self.centralWidget)
-        self.NMFtolSpinbox.setPrefix("1e")
-        self.NMFtolSpinbox.setMinimum(-20)
-        self.NMFtolSpinbox.setMaximum(0)
-        self.NMFtolSpinbox.setValue(-4)
+        self.NMFtolSpinbox.setPrefix("1e -")
+        self.NMFtolSpinbox.setMinimum(0)
+        self.NMFtolSpinbox.setMaximum(20)
+        self.NMFtolSpinbox.setValue(4)
         self.NMFtolSpinbox.setSingleStep(1)
         self.NMFtolSpinbox.setGeometry(130, 205, 55, 20)
         self.NMFtolSpinbox.setToolTip("Tolerance of the stopping condition")
@@ -469,10 +477,10 @@ class MainWindow(qtw.QMainWindow):
         self.ICAmax_iterSpinbox.setToolTip("Maximum number of iterations during fit")
 
         self.ICAtolSpinbox = qtw.QSpinBox(self.centralWidget)
-        self.ICAtolSpinbox.setPrefix("1e")
-        self.ICAtolSpinbox.setMinimum(-20)
-        self.ICAtolSpinbox.setMaximum(0)
-        self.ICAtolSpinbox.setValue(-4)
+        self.ICAtolSpinbox.setPrefix("1e -")
+        self.ICAtolSpinbox.setMinimum(0)
+        self.ICAtolSpinbox.setMaximum(20)
+        self.ICAtolSpinbox.setValue(4)
         self.ICAtolSpinbox.setSingleStep(1)
         self.ICAtolSpinbox.setGeometry(185, 205, 55, 20)
         self.ICAtolSpinbox.setToolTip("A positive scalar giving the tolerance at which the un-mixing matrix is considered to have converged")
@@ -833,7 +841,7 @@ class MainWindow(qtw.QMainWindow):
         angles, intensities = import_dataset(self.indirLabel.text()+"\\")#, self.filetypeGroup.checkedButton().text(), self.autofiletypeCheck.isChecked())
         numComponents = self.numComponentsSlider.value()
 
-        if self.inputformatGroup.checkedButton().text() == "2θ (°)":
+        if self.convert2QCheckbox.isChecked():
             angles = theta_to_Q(angles, self.wavelengthWidget.value())
 
         match self.algorithmGroup.checkedButton().text():
@@ -841,7 +849,7 @@ class MainWindow(qtw.QMainWindow):
                 fitted, transformed, reconstructed = PCA_analysis(intensities, numComponents,
                                                                   whiten=self.PCAwhitenCheck.isChecked(),
                                                                   svd_solver=self.PCAsolverDropdown.currentText(),
-                                                                  tol=10**(self.PCAtolSpinbox.value()),
+                                                                  tol=10**(-self.PCAtolSpinbox.value()),
                                                                   iterated_power='auto' if self.PCAiterated_powerAutoCheckbox.isChecked else self.PCAiterated_powerSpinbox.value(),
                                                                   n_oversamples=self.PCAn_oversampledSpinbox.value(),
                                                                   power_iteration_normalizer=self.PCApower_iteration_normalizerDropdown.currentText())
@@ -851,7 +859,7 @@ class MainWindow(qtw.QMainWindow):
                                                                           init=self.NMFinitDropdown.currentText(),
                                                                           solver=self.NMFsolverDropdown.currentText(),
                                                                           beta_loss=self.NMFbeta_lossDropdown.currentText(),
-                                                                          tol=10**(self.NMFtolSpinbox.value()),
+                                                                          tol=10**(-self.NMFtolSpinbox.value()),
                                                                           max_iter=self.NMFmax_iterSpinbox.value(),
                                                                           alpha_W=self.NMFalpha_WDSpinbox.value(),
                                                                           alpha_H='same' if self.NMFalpha_HsameCheckbox.isChecked() else self.NMFalpha_HDSpinbox.value(),
@@ -862,7 +870,7 @@ class MainWindow(qtw.QMainWindow):
                                                                   whiten= False if self.ICAwhitenDropdown.currentText()=='False' else self.ICAwhitenDropdown.currentText(),
                                                                   fun=self.ICAfunDropdown.currentText(),
                                                                   max_iter=self.ICAmax_iterSpinbox.value(),
-                                                                  tol=10**(self.ICAtolSpinbox.value()),
+                                                                  tol=10**(-self.ICAtolSpinbox.value()),
                                                                   whiten_solver=self.ICAwhiten_solverDropdown.currentText())
                 errors = None
             case "SNMF":
@@ -877,7 +885,7 @@ class MainWindow(qtw.QMainWindow):
         else:
             plotwidth = numComponents
 
-        if self.inputformatGroup.checkedButton().text() == "2θ (°)":
+        if self.convert2QCheckbox.isChecked():
             xlabel = "Q (Å⁻¹)"
         else:
             xlabel = self.inputformatGroup.checkedButton().text()
@@ -952,7 +960,7 @@ class MainWindow(qtw.QMainWindow):
                 case "PCA":
                     outfile.write(f"Whiten: {self.PCAwhitenCheck.isChecked()}\n")
                     outfile.write(f"SVD solver: {self.PCAsolverDropdown.currentText()}\n")
-                    if self.PCAsolverDropdown.currentText()=="arpack": outfile.write(f"Tolerance: {self.PCAtolSpinbox.value()}\n")
+                    if self.PCAsolverDropdown.currentText()=="arpack": outfile.write(f"Tolerance: {10**-self.PCAtolSpinbox.value()}\n")
                     if self.PCAsolverDropdown.currentText()=="randomized":
                         outfile.write(f"# of iterations (Power method): {self.PCAiterated_powerSpinbox() if self.PCAiterated_powerAutoCheckbox.isChecked() else 'auto'}\n")
                         outfile.write(f"Additional vectors to sample data: {self.PCAn_oversampledSpinbox.value()}\n")
@@ -962,7 +970,7 @@ class MainWindow(qtw.QMainWindow):
                     outfile.write(f"Initialization method: {self.NMFinitDropdown.currentText()}\n")
                     outfile.write(f"Numerical solver: {self.NMFsolverDropdown.currentText()}\n")
                     if self.NMFsolverDropdown.currentText()=='mu': outfile.write(f"Beta divergence to minimize: {self.NMFbeta_lossDropdown.currentText()}\n")
-                    outfile.write(f"Tolerance: {10**self.NMFtolSpinbox.value()}\n")
+                    outfile.write(f"Tolerance: {10**-self.NMFtolSpinbox.value()}\n")
                     outfile.write(f"Maximum number of iterations: {self.NMFmax_iterSpinbox.value()}\n")
                     outfile.write(f"Regularization constant for features: {self.NMFalpha_WDSpinbox.value()}\n")
                     outfile.write(f"Regularization constant for samples: {self.NMFalpha_HDSpinbox.value()}\n") # Should work even if alpha_Hsame=True
@@ -974,7 +982,7 @@ class MainWindow(qtw.QMainWindow):
                     outfile.write(f"Whitening solver: {self.ICAwhiten_solverDropdown.currentText()}\n")
                     outfile.write(f"Functional G form function: {self.ICAfunDropdown.currentText()}\n")
                     outfile.write(f"Maximum number of iterations: {self.ICAmax_iterSpinbox.value()}\n")
-                    outfile.write(f"Tolerance: {10**self.ICAtolSpinbox.value()}\n")
+                    outfile.write(f"Tolerance: {10**-self.ICAtolSpinbox.value()}\n")
         print("Summary written")
 
     def write_components(self, results_path, angles, fitted):
