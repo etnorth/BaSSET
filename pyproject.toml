@@ -4,18 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "BaSSET-UiO"
-version = "1.0.1-alpha"
+version = "1.0.2-alpha"
 dependencies = [
     "natsort",
     "numpy",
     "matplotlib",
     "scikit-learn",
-    "PyQt5"
+    "PyQt6"
 ]
 requires-python = ">3.10"
 authors = [{name="Eira Tiberg North", email="erlendtn@uio.no"}]
 maintainers = [{name="Eira Tiberg North", email="erlendtn@uio.no"}]
-description = "A GUI-based toolbox for signal separation of operando scattering experiments"
+description = "A GUI-based toolbox for signal selection of operando scattering experiments"
 readme = "README.md"
 keywords = ["PDF", "XRD", "operando", "GUI"]
 classifiers = [
