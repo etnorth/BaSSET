@@ -884,7 +884,7 @@ class MainWindow(qtw.QMainWindow):
 
     def run_analysis(self):
         print("Beginning analysis...")
-        angles, intensities = import_dataset(self.indirLabel.text()+"\\")#, self.filetypeGroup.checkedButton().text(), self.autofiletypeCheck.isChecked())
+        angles, intensities = import_dataset(self.indirLabel.text()+os.path.sep)#, self.filetypeGroup.checkedButton().text(), self.autofiletypeCheck.isChecked())
         numComponents = self.numComponentsSlider.value()
 
         if self.convert2QCheckbox.isChecked():
