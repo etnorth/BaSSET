@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from sklearn.decomposition import PCA, NMF, FastICA
-#from diffpy.stretched_nmf.snmf_class import SNMFOptimizer 
+from diffpy.stretched_nmf.snmf_class import SNMFOptimizer 
 import PyQt6.QtCore as qtc
 import PyQt6.QtWidgets as qtw
 import PyQt6.QtGui as qtg
@@ -80,6 +80,11 @@ def import_dataset(dir):
 def theta_to_Q(angles, wavelength):
     return ((4*np.pi) / wavelength) * np.sin(np.deg2rad(angles)/2)
 
+def normalize_dataset(intensities):
+    for i in range(len(intensities)):
+        intensities[i] = intensities[i] / intensities[i].max()
+    return intensities
+
 def PCA_analysis(intensities, numComponents, whiten, svd_solver, tol, iterated_power, n_oversamples, power_iteration_normalizer):
     n_components = min(10,min(np.shape(intensities))) # Setting this higher than the user's number ensures reporting of explained variances
     pca = PCA(n_components = n_components, whiten=whiten, svd_solver=svd_solver, tol=tol, iterated_power=iterated_power, n_oversamples=n_oversamples, power_iteration_normalizer=power_iteration_normalizer)
@@ -96,7 +101,12 @@ def NMF_analysis(intensities, numComponents, init, solver, beta_loss, tol, max_i
     transformed = None
     reconstructed = None
 
+    if intensities.min() < 0:
+        intensities -= intensities.min()
+        print("Negative value found in dataset. Lifting data above zero")
+
     for i, n_components in enumerate(n_components_list):
+        print(f"Calculating NMF reconstruction error for {i} components")
         nmf = NMF(n_components=n_components, init=init, solver=solver, beta_loss=beta_loss, tol=tol, max_iter=max_iter, alpha_W=alpha_W, alpha_H=alpha_H, l1_ratio=l1_ratio)
         X_temp = nmf.fit(intensities)
         errors[i] = X_temp.reconstruction_err_
@@ -115,23 +125,55 @@ def ICA_analysis(intensities, numComponents, algorithm, whiten, fun, max_iter, t
 
     return X, transformed, reconstructed
 
-def SNMF_analysis(angles, intensities, numComponents, min_iter, max_iter, tol, rho, eta):
-    NotImplemented
-    """
-    snmf = SNMFOptimizer(source_matrix = intensities, n_components = numComponents, min_iter=min_iter, max_iter=max_iter, tol=tol)
-    X = snmf.fit(rho=rho, eta=eta)
-    transformed = snmf.apply_transformation_matrix()
-    reconstructed = snmf.reconstruct_matrix()
+def SNMF_analysis(intensities, numComponents, min_iter, max_iter, tol, rho, eta):
+    n_components_list = np.arange(1, min(10,min(np.shape(intensities)))+1, dtype=int)
+    errors = np.empty(len(n_components_list))
+    X = None
+    transformed = None
+    reconstructed = None
 
-    return X, transformed, reconstructed
-    """
+    # SNMF automatically handles lifts negative values, so no if-case needed
+
+    for i, n_components in enumerate(n_components_list):
+        print(f"Calculating SNMF reconstruction error for {n_components} components")
+        snmf = SNMFOptimizer(n_components=4, min_iter=min_iter, max_iter=max_iter, tol=tol, rho=rho, eta=eta, show_plots=True)
+        print(f"n_components={n_components}, min_iter={min_iter}, max_iter={max_iter}, tol={tol}, rho={rho}, eta={eta}")
+        X_temp = snmf.fit(intensities)
+        errors[i] = X_temp.reconstruction_err_
+        if numComponents == n_components:
+            X = X_temp
+            transformed = snmf.components_
+            scores = snmf.weights_
+            stretch = snmf.stretch_
+            reconstructed = snmf.reconstruct_matrix(transformed, scores, stretch)
+
+    return X, transformed, reconstructed, scores, stretch
+
+class SciSpinBox(qtw.QDoubleSpinBox):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.setMinimum(-np.inf)
+        self.setMaximum(np.inf)
+        self.setDecimals(1000)
+        self.validator = qtg.QDoubleValidator()
+        self.validator.setNotation(qtg.QDoubleValidator.Notation.ScientificNotation)
+        self.lineEdit().setValidator(self.validator)
+
+        def textFromValue(self, value):
+            return "{.2e}".format(value)
+        
+        def valueFromText(self, text):
+            try:
+                return float(text)
+            except ValueError:
+                print("Could not convert scientific number user input to float. Deau")
+                return 0.0
 
 class MainWindow(qtw.QMainWindow):
     def __init__(self):
         super().__init__()
         self.configpath = os.path.dirname(os.path.realpath(__file__))
         self.configfile = f"{self.configpath}/config.dat"
-
 
         self.setWindowIcon(qtg.QIcon(f"{self.configpath}/assets/icon.ico"))
         self.setWindowTitle("Battery Signal Selection and Enhancement Toolbox")
@@ -231,7 +273,6 @@ class MainWindow(qtw.QMainWindow):
         self.algorithm_layout.addWidget(self.ICAButton, 1,2)
 
         self.SNMFButton = qtw.QRadioButton("SNMF")
-        self.SNMFButton.setDisabled(True)
         self.SNMFButton.setToolTip("Stretched Non-Negative Matrix Factorization (diffpy)")
         self.algorithm_layout.addWidget(self.SNMFButton, 2,0)
 
@@ -280,7 +321,8 @@ class MainWindow(qtw.QMainWindow):
         ##########################
         self.PCAwhitenCheck = qtw.QCheckBox("Whiten")
         self.algorithm_parameters_layout.addWidget(self.PCAwhitenCheck, 1,0)
-        self.PCAwhitenCheck.setToolTip("Whitening will remove some information from the transformed signal\n" \
+        self.PCAwhitenCheck.setToolTip("[whiten]\n" \
+        "Whitening will remove some information from the transformed signal\n" \
         "(the relative variance scales of the components) but can sometime\n" \
         "improve the predictive accuracy of the downstream estimators\n" \
         "by making their data respect some hard-wired assumptions")
@@ -288,7 +330,8 @@ class MainWindow(qtw.QMainWindow):
         self.PCAsolverDropdown = qtw.QComboBox()
         self.PCAsolverDropdown.addItems(['auto', 'full', 'covariance_eigh', 'arpack', 'randomized'])
         self.algorithm_parameters_layout.addWidget(self.PCAsolverDropdown, 1,1)
-        self.PCAsolverDropdown.setToolTip("The type of Singular Value Decomposition solver to use:\n" \
+        self.PCAsolverDropdown.setToolTip("[svd_solver]\n" \
+        "The type of Singular Value Decomposition solver to use:\n" \
         "auto (default): Chooses solver based on size of dataset and number of components\n" \
         "full: Runs exact full SVD\n" \
         "covariance_eigh: Precomputes covarience for eigenvalue decompositon.\n" \
@@ -299,13 +342,14 @@ class MainWindow(qtw.QMainWindow):
 
         # Only for 'arpack' solver
         self.PCAtolSpinbox = qtw.QSpinBox()
-        self.PCAtolSpinbox.setPrefix("1e -")
-        self.PCAtolSpinbox.setMinimum(0)
-        self.PCAtolSpinbox.setMaximum(20)
+        self.PCAtolSpinbox.setPrefix("1e")
+        self.PCAtolSpinbox.setMinimum(-20)
+        self.PCAtolSpinbox.setMaximum(0)
         self.PCAtolSpinbox.setValue(0)
         self.PCAtolSpinbox.setSingleStep(1)
         self.algorithm_parameters_layout.addWidget(self.PCAtolSpinbox, 1,2)
-        self.PCAtolSpinbox.setToolTip("Tolerance for singular values using 'arpack'")
+        self.PCAtolSpinbox.setToolTip("[tol]\n" \
+        "Tolerance for singular values using 'arpack'")
         self.PCAsolverDropdown.currentTextChanged.connect(
             lambda currentText: self.PCAtolSpinbox.show()
             if currentText=='arpack'
@@ -319,7 +363,8 @@ class MainWindow(qtw.QMainWindow):
         self.PCAiterated_powerSpinbox.setValue(0)
         self.PCAiterated_powerSpinbox.setSingleStep(100)
         self.algorithm_parameters_layout.addWidget(self.PCAiterated_powerSpinbox, 2,0)
-        self.PCAiterated_powerSpinbox.setToolTip("Number of iterations for the power method in 'randomized'")
+        self.PCAiterated_powerSpinbox.setToolTip("[iterated_power]\n" \
+        "Number of iterations for the power method in 'randomized'")
         self.PCAsolverDropdown.currentTextChanged.connect(
             lambda currentText: self.PCAiterated_powerSpinbox.show()
             if currentText=='randomized'
@@ -329,7 +374,8 @@ class MainWindow(qtw.QMainWindow):
         # Only for 'randomized' solver
         self.PCAiterated_powerAutoCheckbox = qtw.QCheckBox("auto")
         self.algorithm_parameters_layout.addWidget(self.PCAiterated_powerAutoCheckbox, 2,1)
-        self.PCAiterated_powerAutoCheckbox.setToolTip("Automatically choose number of iterations")
+        self.PCAiterated_powerAutoCheckbox.setToolTip("[iterated_power]\n" \
+        "Automatically choose number of iterations")
         self.PCAiterated_powerAutoCheckbox.clicked.connect(
             lambda state: self.PCAiterated_powerSpinbox.setDisabled(True)
             if state
@@ -348,7 +394,8 @@ class MainWindow(qtw.QMainWindow):
         self.PCAn_oversampledSpinbox.setValue(10)
         self.PCAn_oversampledSpinbox.setSingleStep(1)
         self.algorithm_parameters_layout.addWidget(self.PCAn_oversampledSpinbox, 2,2)
-        self.PCAn_oversampledSpinbox.setToolTip("Additional number of random vectors to sample using 'randomized'")
+        self.PCAn_oversampledSpinbox.setToolTip("[n_oversamples]\n" \
+        "Additional number of random vectors to sample using 'randomized'")
         self.PCAsolverDropdown.currentTextChanged.connect(
             lambda currentText: self.PCAn_oversampledSpinbox.show()
             if currentText=='randomized'
@@ -359,7 +406,8 @@ class MainWindow(qtw.QMainWindow):
         self.PCApower_iteration_normalizerDropdown = qtw.QComboBox()
         self.PCApower_iteration_normalizerDropdown.addItems(['auto', 'QR', 'LU', 'none'])
         self.algorithm_parameters_layout.addWidget(self.PCApower_iteration_normalizerDropdown, 1,2)
-        self.PCApower_iteration_normalizerDropdown.setToolTip("Power iteration normalizer using 'randomized'")
+        self.PCApower_iteration_normalizerDropdown.setToolTip("[power_iteration_normalizer]\n" \
+        "Power iteration normalizer using 'randomized'")
         self.PCAsolverDropdown.currentTextChanged.connect(
             lambda currentText: self.PCApower_iteration_normalizerDropdown.show()
             if currentText=='randomized'
@@ -369,13 +417,19 @@ class MainWindow(qtw.QMainWindow):
         # Ignored PCA parameters:
         # random_state
 
+        self.PCAalgorithmWidgets = [self.PCAwhitenCheck, self.PCAsolverDropdown,
+                                    self.PCAtolSpinbox, self.PCAiterated_powerSpinbox,
+                                    self.PCAiterated_powerAutoCheckbox, self.PCAn_oversampledSpinbox,
+                                    self.PCAn_oversampledSpinbox, self.PCApower_iteration_normalizerDropdown]
+        
         ##########################
         ##### NMF parameters #####
         ##########################
         self.NMFinitDropdown = qtw.QComboBox()
         self.NMFinitDropdown.addItems(["nndsvda", "random", "nndsvd", "nndsvdar"])
         self.algorithm_parameters_layout.addWidget(self.NMFinitDropdown, 1,0)
-        self.NMFinitDropdown.setToolTip("Method used to initialize the procedure:\n" \
+        self.NMFinitDropdown.setToolTip("[init]\n" \
+        "Method used to initialize the procedure:\n" \
         "('nndsvda' is reccommended for XRD and 'nndsvd' is recommended for PDF)\n" \
         "nndsvda (default): Better when sparsity is not desired\n" \
         "random: Random non-negative matrices\n" \
@@ -385,25 +439,28 @@ class MainWindow(qtw.QMainWindow):
         self.NMFsolverDropdown = qtw.QComboBox()
         self.NMFsolverDropdown.addItems(["cd", "mu"])
         self.algorithm_parameters_layout.addWidget(self.NMFsolverDropdown, 1,1)
-        self.NMFsolverDropdown.setToolTip("Numerical solver to use:\n" \
+        self.NMFsolverDropdown.setToolTip("[solver]\n" \
+        "Numerical solver to use:\n" \
         "cd (default): Coordinate Descent\n" \
         "mu: Multiplicative Update")
 
         self.NMFmax_iterSpinbox = qtw.QSpinBox()
         self.NMFmax_iterSpinbox.setMinimum(0)
-        self.NMFmax_iterSpinbox.setMaximum(5000)
+        self.NMFmax_iterSpinbox.setMaximum(99999)
         self.NMFmax_iterSpinbox.setValue(2500)
         self.algorithm_parameters_layout.addWidget(self.NMFmax_iterSpinbox, 2,0)
-        self.NMFmax_iterSpinbox.setToolTip("Maximum number of iterations before timing out")
+        self.NMFmax_iterSpinbox.setToolTip("[max_iter]\n" \
+        "Maximum number of iterations before timing out")
 
         self.NMFtolSpinbox = qtw.QSpinBox()
-        self.NMFtolSpinbox.setPrefix("1e -")
-        self.NMFtolSpinbox.setMinimum(0)
-        self.NMFtolSpinbox.setMaximum(20)
-        self.NMFtolSpinbox.setValue(4)
+        self.NMFtolSpinbox.setPrefix("1e")
+        self.NMFtolSpinbox.setMinimum(-20)
+        self.NMFtolSpinbox.setMaximum(0)
+        self.NMFtolSpinbox.setValue(-4)
         self.NMFtolSpinbox.setSingleStep(1)
         self.algorithm_parameters_layout.addWidget(self.NMFtolSpinbox, 2,1)
-        self.NMFtolSpinbox.setToolTip("Tolerance of the stopping condition")
+        self.NMFtolSpinbox.setToolTip("[tol]\n" \
+        "Tolerance of the stopping condition")
 
         # Used in 'cd' solver
         self.NMFl1_ratioDSpinbox = qtw.QDoubleSpinBox()
@@ -412,7 +469,8 @@ class MainWindow(qtw.QMainWindow):
         self.NMFl1_ratioDSpinbox.setValue(0)
         self.NMFl1_ratioDSpinbox.setSingleStep(0.05)
         self.algorithm_parameters_layout.addWidget(self.NMFl1_ratioDSpinbox, 1,2)
-        self.NMFl1_ratioDSpinbox.setToolTip("Regularization mixing parameter:\n" \
+        self.NMFl1_ratioDSpinbox.setToolTip("[l1_ratio]\n" \
+        "Regularization mixing parameter:\n" \
         "(0, default): elementwise l2 penalty aka. Frobenius Norm\n"
         "(1): elementwwise l1 penalty (1)\n")
         self.NMFsolverDropdown.currentTextChanged.connect(
@@ -425,7 +483,8 @@ class MainWindow(qtw.QMainWindow):
         self.NMFbeta_lossDropdown = qtw.QComboBox()
         self.NMFbeta_lossDropdown.addItems(["frobenius", "kullback-leibler"]) # "itakura-saito" not included as it cannot have zeros in input data, which XRD/PDF often can have
         self.algorithm_parameters_layout.addWidget(self.NMFbeta_lossDropdown, 1,2)
-        self.NMFbeta_lossDropdown.setToolTip("Beta divergence to be minimized," \
+        self.NMFbeta_lossDropdown.setToolTip("[beta_loss]\n" \
+        "Beta divergence to be minimized," \
         "measuring the distance between X and the dot product WH using 'mu':\n" \
         "frobenius is default")
         self.NMFsolverDropdown.currentTextChanged.connect(
@@ -441,7 +500,8 @@ class MainWindow(qtw.QMainWindow):
         self.NMFalpha_WDSpinbox.setDecimals(5)
         self.NMFalpha_WDSpinbox.setSingleStep(0.00005)
         self.algorithm_parameters_layout.addWidget(self.NMFalpha_WDSpinbox, 3,0)
-        self.NMFalpha_WDSpinbox.setToolTip("Constant that multiplies the regularization terms of the features:\n" \
+        self.NMFalpha_WDSpinbox.setToolTip("[alpha_W]\n" \
+        "Constant that multiplies the regularization terms of the features:\n" \
         "(Regularization a penalty term to constrain parameter complexity and reduce overfitting)\n" \
         "0 (default) means no regularization")
 
@@ -452,12 +512,14 @@ class MainWindow(qtw.QMainWindow):
         self.NMFalpha_HDSpinbox.setDecimals(5)
         self.NMFalpha_HDSpinbox.setSingleStep(0.00005)
         self.algorithm_parameters_layout.addWidget(self.NMFalpha_HDSpinbox, 3,1)
-        self.NMFalpha_HDSpinbox.setToolTip("Constant that multiplies the regularization terms of the mixing of features:\n" \
+        self.NMFalpha_HDSpinbox.setToolTip("[alpha_H]\n" \
+        "Constant that multiplies the regularization terms of the feature mixing:\n" \
         "0 means no regularization")
 
         self.NMFalpha_HsameCheckbox = qtw.QCheckBox("same")
         self.algorithm_parameters_layout.addWidget(self.NMFalpha_HsameCheckbox, 3,2)
-        self.NMFalpha_HsameCheckbox.setToolTip("Use same regularization constant for features and mixing")
+        self.NMFalpha_HsameCheckbox.setToolTip("[alpha_H]\n" \
+        "Use same regularization constant for features and mixing")
         self.NMFalpha_HsameCheckbox.clicked.connect(
             lambda state: self.NMFalpha_HDSpinbox.setDisabled(True)
             if state
@@ -479,49 +541,61 @@ class MainWindow(qtw.QMainWindow):
         # verbose
         # shuffle
 
+        self.NMFalgorithmWidgets = [self.NMFinitDropdown, self.NMFsolverDropdown,
+                                    self.NMFmax_iterSpinbox, self.NMFtolSpinbox,
+                                    self.NMFl1_ratioDSpinbox, self.NMFbeta_lossDropdown,
+                                    self.NMFalpha_WDSpinbox, self.NMFalpha_HDSpinbox,
+                                    self.NMFalpha_HsameCheckbox]
+        
         ##########################
         ##### ICA parameters #####
         ##########################
         self.ICAalgorithmDropdown = qtw.QComboBox()
         self.ICAalgorithmDropdown.addItems(['parallel', 'deflation'])
         self.algorithm_parameters_layout.addWidget(self.ICAalgorithmDropdown, 1,0)
-        self.ICAalgorithmDropdown.setToolTip("Specify which algorithm to use:\n" \
+        self.ICAalgorithmDropdown.setToolTip("[algorithm]\n" \
+        "Specify which algorithm to use:\n" \
         "parallel is default")
 
         self.ICAwhitenDropdown = qtw.QComboBox()
         self.ICAwhitenDropdown.addItems(['unit-variance', 'arbitrary-variance', 'False'])
         self.algorithm_parameters_layout.addWidget(self.ICAwhitenDropdown, 1,1)
-        self.ICAwhitenDropdown.setToolTip("Whitening strategy to use. False means no whitening:\n" \
+        self.ICAwhitenDropdown.setToolTip("[whiten]\n" \
+        "Whitening strategy to use. False means no whitening:\n" \
         "unit-variance (default): the whitening matrix is rescaled to ensure each recovered source has unit variance\n" \
         "arbitrary-variance: a whitening with variance arbitrary is used\n" \
         "False: Data is considered whitened and no whitening is performed")
 
         self.ICAmax_iterSpinbox = qtw.QSpinBox()
         self.ICAmax_iterSpinbox.setMinimum(0)
-        self.ICAmax_iterSpinbox.setMaximum(5000)
+        self.ICAmax_iterSpinbox.setMaximum(99999)
         self.ICAmax_iterSpinbox.setValue(2500)
         self.algorithm_parameters_layout.addWidget(self.ICAmax_iterSpinbox, 2,0)
-        self.ICAmax_iterSpinbox.setToolTip("Maximum number of iterations during fit")
+        self.ICAmax_iterSpinbox.setToolTip("[max_iter]\n" \
+        "Maximum number of iterations during fit")
 
         self.ICAtolSpinbox = qtw.QSpinBox()
-        self.ICAtolSpinbox.setPrefix("1e -")
-        self.ICAtolSpinbox.setMinimum(0)
-        self.ICAtolSpinbox.setMaximum(20)
-        self.ICAtolSpinbox.setValue(4)
+        self.ICAtolSpinbox.setPrefix("1e")
+        self.ICAtolSpinbox.setMinimum(-20)
+        self.ICAtolSpinbox.setMaximum(0)
+        self.ICAtolSpinbox.setValue(-4)
         self.ICAtolSpinbox.setSingleStep(1)
         self.algorithm_parameters_layout.addWidget(self.ICAtolSpinbox, 2,1)
-        self.ICAtolSpinbox.setToolTip("A positive scalar giving the tolerance at which the un-mixing matrix is considered to have converged")
+        self.ICAtolSpinbox.setToolTip("[tol]\n" \
+        "A positive scalar giving the tolerance at which the un-mixing matrix is considered to have converged")
 
         self.ICAfunDropdown = qtw.QComboBox()
         self.ICAfunDropdown.addItems(['logcosh', 'exp', 'cube'])
         self.algorithm_parameters_layout.addWidget(self.ICAfunDropdown, 1,2)
-        self.ICAfunDropdown.setToolTip("The functional form of the G function used in the approximation to neg-entropy:\n" \
+        self.ICAfunDropdown.setToolTip("[fun]\n" \
+        "The functional form of the G function used in the approximation to neg-entropy:\n" \
         "logcosh is default")
 
         self.ICAwhiten_solverDropdown = qtw.QComboBox()
         self.ICAwhiten_solverDropdown.addItems(['svd', 'eigh'])
         self.algorithm_parameters_layout.addWidget(self.ICAwhiten_solverDropdown, 2,2)
-        self.ICAwhiten_solverDropdown.setToolTip("The solver to use for whitening:\n" \
+        self.ICAwhiten_solverDropdown.setToolTip("[whiten_solver]\n" \
+        "The solver to use for whitening:\n" \
         "svd (default): More numerically stable if the problem is degenerate, and often faster for scattering\n" \
         "eigh: More memory efficient when there are more scans than datapoints (rare in scattering)")
 
@@ -530,10 +604,78 @@ class MainWindow(qtw.QMainWindow):
         # w_init
         # random_state
 
+        self.ICAalgorithmWidgets = [self.ICAalgorithmDropdown, self.ICAwhitenDropdown,
+                                    self.ICAmax_iterSpinbox, self.ICAtolSpinbox,
+                                    self.ICAfunDropdown, self.ICAwhiten_solverDropdown]
+        
         ###########################
         ##### SNMF parameters #####
         ###########################
-        """To be added"""
+        self.SNMFmin_iterSpinbox = qtw.QSpinBox()
+        self.SNMFmin_iterSpinbox.setMinimum(0)
+        self.SNMFmin_iterSpinbox.setMaximum(99999)
+        self.SNMFmin_iterSpinbox.setValue(20)
+        self.algorithm_parameters_layout.addWidget(self.SNMFmin_iterSpinbox, 2,0)
+        self.SNMFmin_iterSpinbox.setToolTip("[min_iter]\n" \
+        "Minimum number of iterations before terminating optimzation")
+
+        self.SNMFmax_iterSpinbox = qtw.QSpinBox()
+        self.SNMFmax_iterSpinbox.setMinimum(0)
+        self.SNMFmax_iterSpinbox.setMaximum(99999)
+        self.SNMFmax_iterSpinbox.setValue(500)
+        self.algorithm_parameters_layout.addWidget(self.SNMFmax_iterSpinbox, 2,1)
+        self.SNMFmax_iterSpinbox.setToolTip("[max_iter]\n" \
+        "Maximum number of iterations before terminating optimzation")
+
+        self.SNMFtol_SciSpinbox = SciSpinBox()
+        self.SNMFtol_SciSpinbox.setValue(5e-07)
+        #self.SNMFtol_SciSpinbox.setPrefix("1e")
+        #self.SNMFtol_SciSpinbox.setMinimum(-20)
+        #self.SNMFtol_SciSpinbox.setMaximum(0)
+        #self.SNMFtol_SciSpinbox.setSingleStep(1)
+        self.algorithm_parameters_layout.addWidget(self.SNMFtol_SciSpinbox, 2,2)
+        self.SNMFtol_SciSpinbox.setToolTip("[tol] (you can write scientific (5e-07) in this box)\n" \
+        "Convergence threshold.\n" \
+        "Minimum fractional improvment to allow terminating optimization")
+
+        self.SNMFrho_SciSpinbox = SciSpinBox()
+        self.SNMFrho_SciSpinbox.setMinimum(0)
+        self.SNMFrho_SciSpinbox.setValue(0)
+        self.SNMFrho_SciSpinbox.setDecimals(0)
+        #self.SNMFrho_Spinbox.setMaximum(10000000000)
+        #self.SNMFrho_Spinbox.setSingleStep(1)
+        self.algorithm_parameters_layout.addWidget(self.SNMFrho_SciSpinbox, 3,0)
+        self.SNMFrho_SciSpinbox.setToolTip("[rho] (you can write scientific (2e3) in this box)\n"
+        "Stretching regularization hyperparameter.\n" \
+        "Typically adjusted in powers of 10.\n" \
+        "Zero (default) corresponds to no stretching")
+
+        self.SNMFeta_DSpinbox = qtw.QDoubleSpinBox()
+        self.SNMFeta_DSpinbox.setMinimum(0)
+        self.SNMFeta_DSpinbox.setValue(0)
+        self.SNMFeta_DSpinbox.setDecimals(5)
+        #self.SNMFeta_DSpinbox.setMaximum(10)
+        #self.SNMFeta_DSpinbox.setSingleStep(0.00005)
+        self.algorithm_parameters_layout.addWidget(self.SNMFeta_DSpinbox, 3,1)
+        self.SNMFeta_DSpinbox.setToolTip("[rho]\n" \
+        "Sparsity factor. Should be set to zero (default) for non-sparse data such as PDF.\n" \
+        "Can be used to improve results for sparse data such as XRD,\nbut due to instability should be used only faster selecting the best value for rho.\n" \
+        "Suggested adjustment is by powers of 2")
+
+        # Ignored SNMF parmeters:
+        # random_state
+        # verbose
+        # show_plots
+
+        self.SNMFwarningLabel = qtw.QLabel("WARNING: The SNMF algorithm takes a lot of time.\n" \
+        "It's recommended to decide number of components through other algorithms first.\n" \
+        "Error calculation will not be performed.")
+        self.SNMFwarningLabel.setWordWrap(True)
+        self.grid.addWidget(self.SNMFwarningLabel, 3, 0)
+        
+        self.SNMFalgorithmWidgets = [self.SNMFmin_iterSpinbox, self.SNMFmax_iterSpinbox,
+                                     self.SNMFtol_SciSpinbox, self.SNMFrho_SciSpinbox,
+                                     self.SNMFeta_DSpinbox, self.SNMFwarningLabel]
         
         #####################################
         ##### Analysis and plot widgets #####
@@ -569,7 +711,7 @@ class MainWindow(qtw.QMainWindow):
         self.plot_xmax_DSpinBox = qtw.QDoubleSpinBox()
         self.plot_xmax_DSpinBox.setMinimum(0)
         self.plot_xmax_DSpinBox.setMaximum(999)
-        self.plot_xmax_DSpinBox.setValue(20)
+        self.plot_xmax_DSpinBox.setValue(30)
         self.plot_xmax_DSpinBox.setDecimals(2)
         self.plot_xmax_DSpinBox.setSingleStep(0.01)
         self.xrange_layout.addWidget(self.plot_xmax_DSpinBox, 3,1)
@@ -756,8 +898,15 @@ class MainWindow(qtw.QMainWindow):
         self.file_submenu_recent.insertAction(self.file_submenu_recent.actions()[0], recentdir_button)
 
     def display_algorithm_widgets(self):
+        for widget in (self.PCAalgorithmWidgets +
+                       self.NMFalgorithmWidgets +
+                       self.ICAalgorithmWidgets +
+                       self.SNMFalgorithmWidgets):
+                    widget.hide()
         match self.algorithmGroup.checkedButton().text():
             case "PCA":
+                """for widget in self.PCAalgorithmWidgets:
+                    widget.show()"""
                 self.PCAwhitenCheck.show()
                 self.PCAsolverDropdown.show()
                 self.PCAtolSpinbox.show() if self.PCAsolverDropdown.currentText=='arpack' else self.PCAtolSpinbox.hide()
@@ -765,73 +914,17 @@ class MainWindow(qtw.QMainWindow):
                 self.PCAiterated_powerSpinbox.show() if self.PCAsolverDropdown.currentText=='randomized' else self.PCAiterated_powerSpinbox.hide()
                 self.PCAn_oversampledSpinbox.show() if self.PCAsolverDropdown.currentText=='randomized' else self.PCAn_oversampledSpinbox.hide()
                 self.PCApower_iteration_normalizerDropdown.show() if self.PCAsolverDropdown.currentText=='randomized' else self.PCApower_iteration_normalizerDropdown.hide()
-
-                self.NMFinitDropdown.hide()
-                self.NMFsolverDropdown.hide()
-                self.NMFbeta_lossDropdown.hide()
-                self.NMFtolSpinbox.hide()
-                self.NMFmax_iterSpinbox.hide()
-                self.NMFalpha_WDSpinbox.hide()
-                self.NMFalpha_HDSpinbox.hide()
-                self.NMFalpha_HsameCheckbox.hide()
-                self.NMFl1_ratioDSpinbox.hide()
-
-                self.ICAalgorithmDropdown.hide()
-                self.ICAwhitenDropdown.hide()
-                self.ICAwhiten_solverDropdown.hide()
-                self.ICAfunDropdown.hide()
-                self.ICAmax_iterSpinbox.hide()
-                self.ICAtolSpinbox.hide()
             case "NMF":
-                self.PCAwhitenCheck.hide()
-                self.PCAsolverDropdown.hide()
-                self.PCAtolSpinbox.hide()
-                self.PCAiterated_powerSpinbox.hide()
-                self.PCAiterated_powerAutoCheckbox.hide()
-                self.PCAn_oversampledSpinbox.hide()
-                self.PCApower_iteration_normalizerDropdown.hide()
-
-                self.NMFinitDropdown.show()
-                self.NMFsolverDropdown.show()
+                for widget in self.NMFalgorithmWidgets:
+                    widget.show()
                 self.NMFbeta_lossDropdown.show() if self.NMFsolverDropdown.currentText=='mu' else self.NMFbeta_lossDropdown.hide()
-                self.NMFtolSpinbox.show()
-                self.NMFmax_iterSpinbox.show()
-                self.NMFalpha_WDSpinbox.show()
-                self.NMFalpha_HDSpinbox.show()
-                self.NMFalpha_HsameCheckbox.show()
                 self.NMFl1_ratioDSpinbox.show() if self.NMFsolverDropdown.currentText=='cd' else self.NMFl1_ratioDSpinbox.show()
-
-                self.ICAalgorithmDropdown.hide()
-                self.ICAwhitenDropdown.hide()
-                self.ICAwhiten_solverDropdown.hide()
-                self.ICAfunDropdown.hide()
-                self.ICAmax_iterSpinbox.hide()
-                self.ICAtolSpinbox.hide()
             case "ICA":
-                self.PCAwhitenCheck.hide()
-                self.PCAsolverDropdown.hide()
-                self.PCAtolSpinbox.hide()
-                self.PCAiterated_powerSpinbox.hide()
-                self.PCAiterated_powerAutoCheckbox.hide()
-                self.PCAn_oversampledSpinbox.hide()
-                self.PCApower_iteration_normalizerDropdown.hide()
-
-                self.NMFinitDropdown.hide()
-                self.NMFsolverDropdown.hide()
-                self.NMFbeta_lossDropdown.hide()
-                self.NMFtolSpinbox.hide()
-                self.NMFmax_iterSpinbox.hide()
-                self.NMFalpha_WDSpinbox.hide()
-                self.NMFalpha_HDSpinbox.hide()
-                self.NMFalpha_HsameCheckbox.hide()
-                self.NMFl1_ratioDSpinbox.hide()
-
-                self.ICAalgorithmDropdown.show()
-                self.ICAwhitenDropdown.show()
-                self.ICAwhiten_solverDropdown.show()
-                self.ICAfunDropdown.show()
-                self.ICAmax_iterSpinbox.show()
-                self.ICAtolSpinbox.show()
+                for widget in self.ICAalgorithmWidgets:
+                    widget.show()
+            case "SNMF":
+                for widget in self.SNMFalgorithmWidgets:
+                    widget.show()
 
     def read_config_file(self):
         with open(self.configfile, encoding='utf-8') as infile:
@@ -884,7 +977,7 @@ class MainWindow(qtw.QMainWindow):
 
     def run_analysis(self):
         print("Beginning analysis...")
-        angles, intensities = import_dataset(self.indirLabel.text()+os.path.sep)#, self.filetypeGroup.checkedButton().text(), self.autofiletypeCheck.isChecked())
+        angles, intensities = import_dataset(self.indirLabel.text() + os.path.sep)
         numComponents = self.numComponentsSlider.value()
 
         if self.convert2QCheckbox.isChecked():
@@ -895,7 +988,7 @@ class MainWindow(qtw.QMainWindow):
                 fitted, transformed, reconstructed = PCA_analysis(intensities, numComponents,
                                                                   whiten=self.PCAwhitenCheck.isChecked(),
                                                                   svd_solver=self.PCAsolverDropdown.currentText(),
-                                                                  tol=10**(-self.PCAtolSpinbox.value()),
+                                                                  tol=10**(self.PCAtolSpinbox.value()),
                                                                   iterated_power='auto' if self.PCAiterated_powerAutoCheckbox.isChecked else self.PCAiterated_powerSpinbox.value(),
                                                                   n_oversamples=self.PCAn_oversampledSpinbox.value(),
                                                                   power_iteration_normalizer=self.PCApower_iteration_normalizerDropdown.currentText())
@@ -905,7 +998,7 @@ class MainWindow(qtw.QMainWindow):
                                                                           init=self.NMFinitDropdown.currentText(),
                                                                           solver=self.NMFsolverDropdown.currentText(),
                                                                           beta_loss=self.NMFbeta_lossDropdown.currentText(),
-                                                                          tol=10**(-self.NMFtolSpinbox.value()),
+                                                                          tol=10**(self.NMFtolSpinbox.value()),
                                                                           max_iter=self.NMFmax_iterSpinbox.value(),
                                                                           alpha_W=self.NMFalpha_WDSpinbox.value(),
                                                                           alpha_H='same' if self.NMFalpha_HsameCheckbox.isChecked() else self.NMFalpha_HDSpinbox.value(),
@@ -913,14 +1006,19 @@ class MainWindow(qtw.QMainWindow):
             case "ICA":
                 fitted, transformed, reconstructed = ICA_analysis(intensities, numComponents,
                                                                   algorithm=self.ICAalgorithmDropdown.currentText(),
-                                                                  whiten= False if self.ICAwhitenDropdown.currentText()=='False' else self.ICAwhitenDropdown.currentText(),
+                                                                  whiten=False if self.ICAwhitenDropdown.currentText()=='False' else self.ICAwhitenDropdown.currentText(),
                                                                   fun=self.ICAfunDropdown.currentText(),
                                                                   max_iter=self.ICAmax_iterSpinbox.value(),
-                                                                  tol=10**(-self.ICAtolSpinbox.value()),
+                                                                  tol=10**(self.ICAtolSpinbox.value()),
                                                                   whiten_solver=self.ICAwhiten_solverDropdown.currentText())
                 errors = None
             case "SNMF":
-                NotImplemented
+                fitted, transformed, scores, stretch, reconstructed = SNMF_analysis(intensities, numComponents,
+                                                                               min_iter=self.SNMFmin_iterSpinbox.value(),
+                                                                               max_iter=self.SNMFmax_iterSpinbox.value(),
+                                                                               tol=self.SNMFtol_SciSpinbox.value(),
+                                                                               rho=self.SNMFrho_SciSpinbox.value(),
+                                                                               eta=self.SNMFeta_DSpinbox.value())
 
         print("Analysis completed")
         self.plot_analysis(angles, intensities, numComponents, fitted, transformed, reconstructed, errors)
@@ -950,7 +1048,7 @@ class MainWindow(qtw.QMainWindow):
 
         colors = uio_cmp(np.linspace(0, 1, numComponents))
 
-        fig, axs = plt.subplots(3, plotwidth, layout="constrained")#, gridspec_kw = {"hspace":0.1})
+        fig, axs = plt.subplots(3, plotwidth, layout="constrained", )#, gridspec_kw = {"hspace":0.1})
         for i in range(numComponents):
             axs[0][i].plot(angles[i], fitted.components_[i], "k")
             axs[0][i].set_title(f"Component {i+1}")
@@ -983,14 +1081,27 @@ class MainWindow(qtw.QMainWindow):
 
         match self.algorithmGroup.checkedButton().text():
             case "PCA":
-                axs[2][1].plot(np.arange(1, 10+1), fitted.explained_variance_ratio_*100, "ko-")
+                axs[2][1].plot(np.arange(1, min(10,min(np.shape(intensities)))+1), fitted.explained_variance_ratio_*100, "ko-")
                 axs[2][1].set_title("Explained variances")
             case "NMF":
-                axs[2][1].plot(np.arange(1, 10+1), errors, "ko-")
+                axs[2][1].plot(np.arange(1, min(10,min(np.shape(intensities)))+1), errors, "ko-")
                 axs[2][1].set_title("Reconstruction error")
+            case "SNMF":
+                axs[2][1].plot(np.arange(1, min(10,min(np.shape(intensities)))+1), errors, "ko-")
+                axs[2][1].set_title("Reconstruction error (Not Implemented)")
         axs[2][1].set_xlabel("# of Components")
 
         fig.canvas.manager.set_window_title(f"{numComponents} component {self.algorithmGroup.checkedButton().text()} on {self.indirLabel.text().split('/')[-1]}")
+
+        # Maximize window
+        manager = plt.get_current_fig_manager()
+        try:
+            manager.window.showMaximized() # For Qt
+        except AttributeError:
+            try:
+                manager.frame.Maximize(True) # For Wx
+            except AttributeError:
+                manager.full_screen_toggle() # Fallback for some backends
 
         fig.show()
 
@@ -1006,7 +1117,7 @@ class MainWindow(qtw.QMainWindow):
                 case "PCA":
                     outfile.write(f"Whiten: {self.PCAwhitenCheck.isChecked()}\n")
                     outfile.write(f"SVD solver: {self.PCAsolverDropdown.currentText()}\n")
-                    if self.PCAsolverDropdown.currentText()=="arpack": outfile.write(f"Tolerance: {10**-self.PCAtolSpinbox.value()}\n")
+                    if self.PCAsolverDropdown.currentText()=="arpack": outfile.write(f"Tolerance: {10**self.PCAtolSpinbox.value()}\n")
                     if self.PCAsolverDropdown.currentText()=="randomized":
                         outfile.write(f"# of iterations (Power method): {self.PCAiterated_powerSpinbox() if self.PCAiterated_powerAutoCheckbox.isChecked() else 'auto'}\n")
                         outfile.write(f"Additional vectors to sample data: {self.PCAn_oversampledSpinbox.value()}\n")
@@ -1016,7 +1127,7 @@ class MainWindow(qtw.QMainWindow):
                     outfile.write(f"Initialization method: {self.NMFinitDropdown.currentText()}\n")
                     outfile.write(f"Numerical solver: {self.NMFsolverDropdown.currentText()}\n")
                     if self.NMFsolverDropdown.currentText()=='mu': outfile.write(f"Beta divergence to minimize: {self.NMFbeta_lossDropdown.currentText()}\n")
-                    outfile.write(f"Tolerance: {10**-self.NMFtolSpinbox.value()}\n")
+                    outfile.write(f"Tolerance: {10**self.NMFtolSpinbox.value()}\n")
                     outfile.write(f"Maximum number of iterations: {self.NMFmax_iterSpinbox.value()}\n")
                     outfile.write(f"Regularization constant for features: {self.NMFalpha_WDSpinbox.value()}\n")
                     outfile.write(f"Regularization constant for samples: {self.NMFalpha_HDSpinbox.value()}\n") # Should work even if alpha_Hsame=True
@@ -1028,7 +1139,7 @@ class MainWindow(qtw.QMainWindow):
                     outfile.write(f"Whitening solver: {self.ICAwhiten_solverDropdown.currentText()}\n")
                     outfile.write(f"Functional G form function: {self.ICAfunDropdown.currentText()}\n")
                     outfile.write(f"Maximum number of iterations: {self.ICAmax_iterSpinbox.value()}\n")
-                    outfile.write(f"Tolerance: {10**-self.ICAtolSpinbox.value()}\n")
+                    outfile.write(f"Tolerance: {10**self.ICAtolSpinbox.value()}\n")
         print("Summary written")
 
     def write_components(self, results_path, angles, fitted):
@@ -1064,7 +1175,7 @@ class MainWindow(qtw.QMainWindow):
                     outfile.write(f"{angles[i][j]}\t{intensities[i][j]-reconstructed[i][j]}\n")
         print("Differences written")
 
-    def export_results(self, angles, intensities, fitted, transformed, reconstructed, fig, errors=None):
+    def export_results(self, angles, intensities, fitted, transformed, reconstructed, fig=None, errors=None):
         if not os.path.exists(f"{self.indirLabel.text()}/BaSSET_results"):
             os.mkdir(f"{self.indirLabel.text()}/BaSSET_results")
 
@@ -1072,7 +1183,8 @@ class MainWindow(qtw.QMainWindow):
         results_path = f"{self.indirLabel.text()}/BaSSET_results/{export_time}_{self.algorithmGroup.checkedButton().text()}_{self.numComponentsSlider.value()}"
         os.mkdir(results_path)
 
-        fig.savefig(f"{results_path}/overview.jpg")
+        if fig!=None:
+            fig.savefig(f"{results_path}/overview.jpg")
         self.write_summary(results_path, errors)
         self.write_components(results_path, angles, fitted)
         self.write_scores(results_path, transformed)

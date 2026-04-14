@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "BaSSET-UiO"
-version = "1.0.2-alpha"
+version = "1.1.0-alpha"
 dependencies = [
     "natsort",
     "numpy",
@@ -12,7 +12,7 @@ dependencies = [
     "scikit-learn",
     "PyQt6"
 ]
-requires-python = ">3.10"
+requires-python = ">=3.11"
 authors = [{name="Eira Tiberg North", email="erlendtn@uio.no"}]
 maintainers = [{name="Eira Tiberg North", email="erlendtn@uio.no"}]
 description = "A GUI-based toolbox for signal selection of operando scattering experiments"
