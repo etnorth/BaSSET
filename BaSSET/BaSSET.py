@@ -21,8 +21,8 @@ if platform.system() == "Windows":
     import ctypes
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u"UiO.BaSSET")
 
-uio_palette = ['#86A4F7','#2EC483','#FB6666']
-uio_cmp = LinearSegmentedColormap.from_list('UiO colourmap',uio_palette)
+#uio_palette = ['#86A4F7','#2EC483','#FB6666']
+#uio_cmp = LinearSegmentedColormap.from_list('UiO colourmap',uio_palette)
 
 def import_data(filename):
     """
@@ -106,7 +106,7 @@ def NMF_analysis(intensities, numComponents, init, solver, beta_loss, tol, max_i
         print("Negative value found in dataset. Lifting data above zero")
 
     for i, n_components in enumerate(n_components_list):
-        print(f"Calculating NMF reconstruction error for {i} components")
+        print(f"Calculating NMF reconstruction error for {n_components} components")
         nmf = NMF(n_components=n_components, init=init, solver=solver, beta_loss=beta_loss, tol=tol, max_iter=max_iter, alpha_W=alpha_W, alpha_H=alpha_H, l1_ratio=l1_ratio)
         X_temp = nmf.fit(intensities)
         errors[i] = X_temp.reconstruction_err_
@@ -126,28 +126,38 @@ def ICA_analysis(intensities, numComponents, algorithm, whiten, fun, max_iter, t
     return X, transformed, reconstructed
 
 def SNMF_analysis(intensities, numComponents, min_iter, max_iter, tol, rho, eta):
+    """
     n_components_list = np.arange(1, min(10,min(np.shape(intensities)))+1, dtype=int)
     errors = np.empty(len(n_components_list))
     X = None
     transformed = None
     reconstructed = None
-
+    """
     # SNMF automatically handles lifts negative values, so no if-case needed
-
+    """
     for i, n_components in enumerate(n_components_list):
         print(f"Calculating SNMF reconstruction error for {n_components} components")
-        snmf = SNMFOptimizer(n_components=4, min_iter=min_iter, max_iter=max_iter, tol=tol, rho=rho, eta=eta, show_plots=True)
+        snmf = SNMFOptimizer(n_components=n_components, min_iter=min_iter, max_iter=max_iter, tol=tol, rho=rho, eta=eta, show_plots=True)
         print(f"n_components={n_components}, min_iter={min_iter}, max_iter={max_iter}, tol={tol}, rho={rho}, eta={eta}")
         X_temp = snmf.fit(intensities)
         errors[i] = X_temp.reconstruction_err_
         if numComponents == n_components:
             X = X_temp
-            transformed = snmf.components_
-            scores = snmf.weights_
+            transformed = snmf.weights_
             stretch = snmf.stretch_
-            reconstructed = snmf.reconstruct_matrix(transformed, scores, stretch)
+            reconstructed = snmf.reconstruct_matrix(snmf.components_, transformed, stretch)
 
-    return X, transformed, reconstructed, scores, stretch
+    return X, transformed, reconstructed, errors, stretch
+    """
+
+    print(f"Calculating SNMF reconstruction error for {numComponents} components")
+    snmf = SNMFOptimizer(n_components=numComponents, min_iter=min_iter, max_iter=max_iter, tol=tol, rho=rho, eta=eta, show_plots=True, verbose=True)
+    X = snmf.fit(intensities)
+    transformed = snmf.weights_
+    stretch = snmf.stretch_
+    reconstructed = snmf.reconstruct_matrix(snmf.components_, transformed, stretch)
+
+    return X, transformed, reconstructed, stretch
 
 class SciSpinBox(qtw.QDoubleSpinBox):
     def __init__(self, *args, **kwargs):
@@ -245,6 +255,10 @@ class MainWindow(qtw.QMainWindow):
             if button==self.thetaButton
             else self.wavelengthWidget.setDisabled(True)
         )
+
+        self.plotDataButton = qtw.QPushButton("Plot input dataset")
+        self.plotDataButton.setSizePolicy(qtw.QSizePolicy.Policy.MinimumExpanding, qtw.QSizePolicy.Policy.Fixed)
+        self.grid.addWidget(self.plotDataButton, 2, 0)
 
         #############################
         ##### Algorithm widgets #####
@@ -646,7 +660,7 @@ class MainWindow(qtw.QMainWindow):
         #self.SNMFrho_Spinbox.setSingleStep(1)
         self.algorithm_parameters_layout.addWidget(self.SNMFrho_SciSpinbox, 3,0)
         self.SNMFrho_SciSpinbox.setToolTip("[rho] (you can write scientific (2e3) in this box)\n"
-        "Stretching regularization hyperparameter.\n" \
+        "Stretching factor // Stretching regularization hyperparameter. Controls stretching pentalty. \n" \
         "Typically adjusted in powers of 10.\n" \
         "Zero (default) corresponds to no stretching")
 
@@ -668,7 +682,6 @@ class MainWindow(qtw.QMainWindow):
         # show_plots
 
         self.SNMFwarningLabel = qtw.QLabel("WARNING: The SNMF algorithm takes a lot of time.\n" \
-        "It's recommended to decide number of components through other algorithms first.\n" \
         "Error calculation will not be performed.")
         self.SNMFwarningLabel.setWordWrap(True)
         self.grid.addWidget(self.SNMFwarningLabel, 3, 0)
@@ -795,6 +808,7 @@ class MainWindow(qtw.QMainWindow):
         self.indirButton.clicked.connect(self.update_config_file)
         self.inputformatGroup.buttonClicked.connect(self.update_config_file)
         self.wavelengthWidget.valueChanged.connect(self.update_config_file)
+        self.plotDataButton.clicked.connect(self.plot_dataset)
         self.algorithmGroup.buttonClicked.connect(self.display_algorithm_widgets)
         self.algorithmGroup.buttonClicked.connect(self.update_config_file)
         self.numComponentsSlider.valueChanged.connect(lambda value: self.numComponentsLabel.setText(str(value)))
@@ -975,6 +989,41 @@ class MainWindow(qtw.QMainWindow):
             outfile.write(f"Algorithm: {self.algorithmGroup.checkedButton().text()}\n")
             outfile.write(f"Number of components: {self.numComponentsSlider.value()}\n")
 
+    def plot_dataset(self):
+        print("Plotting input dataset")
+
+        if self.convert2QCheckbox.isChecked():
+            xlabel = "Q (Å⁻¹)"
+        else:
+            xlabel = self.inputformatGroup.checkedButton().text()
+
+        fig = plt.figure(layout="constrained")
+
+        angles, intensities = import_dataset(self.indirLabel.text() + os.path.sep)
+        cmap = plt.get_cmap('inferno')
+        colors = cmap(np.linspace(1, 0, len(intensities)))
+        lift_scale = np.max(intensities) / (15*len(intensities))
+        for i in range(len(intensities)-1, -1, -1):
+            plt.plot(angles[i], intensities[i]+i*lift_scale, color=colors[i])
+
+        plt.xlabel(xlabel)
+        plt.ylabel("Intensity (staggered) [A.U.]")
+        plt.xlim(np.min(angles), np.max(angles))
+        plt.ylim(np.min(intensities), np.max(intensities) + len(intensities)*lift_scale)
+        plt.ticklabel_format(axis="y", style="sci", scilimits=[0,0])
+
+        # Maximize window
+        manager = plt.get_current_fig_manager()
+        try:
+            manager.window.showMaximized() # For Qt
+        except AttributeError:
+            try:
+                manager.frame.Maximize(True) # For Wx
+            except AttributeError:
+                manager.full_screen_toggle() # Fallback for some backends
+
+        fig.show()
+
     def run_analysis(self):
         print("Beginning analysis...")
         angles, intensities = import_dataset(self.indirLabel.text() + os.path.sep)
@@ -1013,12 +1062,12 @@ class MainWindow(qtw.QMainWindow):
                                                                   whiten_solver=self.ICAwhiten_solverDropdown.currentText())
                 errors = None
             case "SNMF":
-                fitted, transformed, scores, stretch, reconstructed = SNMF_analysis(intensities, numComponents,
-                                                                               min_iter=self.SNMFmin_iterSpinbox.value(),
-                                                                               max_iter=self.SNMFmax_iterSpinbox.value(),
-                                                                               tol=self.SNMFtol_SciSpinbox.value(),
-                                                                               rho=self.SNMFrho_SciSpinbox.value(),
-                                                                               eta=self.SNMFeta_DSpinbox.value())
+                fitted, transformed, stretch, reconstructed = SNMF_analysis(intensities, numComponents, # errors
+                                                                            min_iter=self.SNMFmin_iterSpinbox.value(),
+                                                                            max_iter=self.SNMFmax_iterSpinbox.value(),
+                                                                            tol=self.SNMFtol_SciSpinbox.value(),
+                                                                            rho=self.SNMFrho_SciSpinbox.value(),
+                                                                            eta=self.SNMFeta_DSpinbox.value())
 
         print("Analysis completed")
         self.plot_analysis(angles, intensities, numComponents, fitted, transformed, reconstructed, errors)
@@ -1039,14 +1088,15 @@ class MainWindow(qtw.QMainWindow):
             if widget.isVisible():
                 reconNum.append(widget.value()-1)
         if any(x>len(reconstructed) for x in reconNum):
-            print("Reconstruction scan larger than numer of scan. Defaulting to uniform distribution")
+            print("Reconstruction scan larger than number of scans. Defaulting to uniform distribution")
             reconNum[0]=-1
 
         if any(x==-1 for x in reconNum): # If any reconstuction widgets are 0, meaning -1 due to the line above
             reconNum = list(np.linspace(0, len(reconstructed), numComponents-1, endpoint=False, dtype=int))
             reconNum.append(len(reconstructed)-1)  # By using numComponents-1 and appending the end-point we get first and last scan
 
-        colors = uio_cmp(np.linspace(0, 1, numComponents))
+        cmap = plt.get_cmap('inferno')
+        colors = cmap(np.linspace(0, 1, numComponents))
 
         fig, axs = plt.subplots(3, plotwidth, layout="constrained", )#, gridspec_kw = {"hspace":0.1})
         for i in range(numComponents):
@@ -1087,8 +1137,14 @@ class MainWindow(qtw.QMainWindow):
                 axs[2][1].plot(np.arange(1, min(10,min(np.shape(intensities)))+1), errors, "ko-")
                 axs[2][1].set_title("Reconstruction error")
             case "SNMF":
+                NotImplemented
+                """
                 axs[2][1].plot(np.arange(1, min(10,min(np.shape(intensities)))+1), errors, "ko-")
                 axs[2][1].set_title("Reconstruction error (Not Implemented)")
+                axs[2][2].plot(np.arange(1, min(10,min(np.shape(intensities)))+1, stretch, "ko-"))
+                axs[2][2].set_title("Stretching")
+                """
+
         axs[2][1].set_xlabel("# of Components")
 
         fig.canvas.manager.set_window_title(f"{numComponents} component {self.algorithmGroup.checkedButton().text()} on {self.indirLabel.text().split('/')[-1]}")
@@ -1242,7 +1298,7 @@ def main():
     window = MainWindow()
     window.show()
 
-    app.exec()
+    sys.exit(app.exec())
 
 if __name__=="__main__":
     main()
