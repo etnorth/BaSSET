@@ -9,7 +9,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 from sklearn.decomposition import PCA, NMF, FastICA
-from diffpy.stretched_nmf.snmf_class import SNMFOptimizer 
+from diffpy.stretched_nmf.snmf_class import SNMFOptimizer
 import PyQt6.QtCore as qtc
 import PyQt6.QtWidgets as qtw
 import PyQt6.QtGui as qtg
@@ -21,8 +21,29 @@ if platform.system() == "Windows":
     import ctypes
     ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u"UiO.BaSSET")
 
-#uio_palette = ['#86A4F7','#2EC483','#FB6666']
-#uio_cmp = LinearSegmentedColormap.from_list('UiO colourmap',uio_palette)
+plt.rcParams.update({
+    #"font.family": "Arial",
+    "font.size": 12, # Changes default font size for text, given in points (10 default)
+    "figure.dpi": 100,
+    "figure.figsize": (19.2, 10.8),
+    "figure.constrained_layout.use": True,
+    "xtick.direction": "in",
+    "ytick.direction": "in",
+    "xtick.top": True,
+    "xtick.bottom": True,
+    "xtick.minor.visible": True,
+    "ytick.left": True,
+    "ytick.right": True,
+    "ytick.minor.visible": True,
+    "xtick.major.size": 4, # major tick size in points (3.5 default)
+    "xtick.minor.size": 2, # minor tick size in points (2 default)
+    "ytick.major.size": 4, # major tick size in points (3.5 default)
+    "ytick.minor.size": 2, # minor tick size in points (2 default)
+    "legend.frameon": False,
+    "savefig.dpi": 300, # figure dots per inch or 'figure'
+    "savefig.bbox": "tight", # {tight, standard} (tight is incompatible with animations)
+    "savefig.pad_inches": 0 # padding to be used, when bbox is set to 'tight'
+})
 
 def import_data(filename):
     """
@@ -101,8 +122,9 @@ def NMF_analysis(intensities, numComponents, init, solver, beta_loss, tol, max_i
     transformed = None
     reconstructed = None
 
-    if intensities.min() < 0:
-        intensities -= intensities.min()
+    lift_factor = intensities.min()
+    if lift_factor < 0:
+        intensities -= lift_factor
         print("Negative value found in dataset. Lifting data above zero")
 
     for i, n_components in enumerate(n_components_list):
@@ -115,7 +137,12 @@ def NMF_analysis(intensities, numComponents, init, solver, beta_loss, tol, max_i
             transformed = nmf.transform(intensities)
             reconstructed = nmf.inverse_transform(transformed)
 
-    return X, transformed, reconstructed, errors
+    if lift_factor < 0: # Lower data below zero again
+        intensities += lift_factor
+        X.components_ += lift_factor
+        reconstructed += lift_factor
+
+    return X, transformed, reconstructed, errors, lift_factor
 
 def ICA_analysis(intensities, numComponents, algorithm, whiten, fun, max_iter, tol, whiten_solver):
     ica = FastICA(n_components = numComponents, algorithm=algorithm, whiten=whiten, fun=fun, max_iter=max_iter, tol=tol, whiten_solver=whiten_solver)
@@ -164,24 +191,28 @@ class SciSpinBox(qtw.QDoubleSpinBox):
         super().__init__(*args, **kwargs)
         self.setMinimum(-np.inf)
         self.setMaximum(np.inf)
-        self.setDecimals(1000)
-        self.validator = qtg.QDoubleValidator()
-        self.validator.setNotation(qtg.QDoubleValidator.Notation.ScientificNotation)
-        self.lineEdit().setValidator(self.validator)
+        self.setDecimals(15)
+        self.setMinimumWidth(110)
 
-        def textFromValue(self, value):
-            return "{.2e}".format(value)
-        
-        def valueFromText(self, text):
-            try:
-                return float(text)
-            except ValueError:
-                print("Could not convert scientific number user input to float. Deau")
-                return 0.0
+    def textFromValue(self, value):
+        return "{:.2e}".format(value)
+    
+    def valueFromText(self, text):
+        try:
+            return float(text)
+        except ValueError:
+            return self.value()
+
+    def validate(self, text, pos):
+        return qtg.QDoubleValidator.State.Acceptable, text, pos
 
 class MainWindow(qtw.QMainWindow):
     def __init__(self):
         super().__init__()
+
+        self.angles = None
+        self.intensities = None
+
         self.configpath = os.path.dirname(os.path.realpath(__file__))
         self.configfile = f"{self.configpath}/config.dat"
 
@@ -220,17 +251,17 @@ class MainWindow(qtw.QMainWindow):
         self.input_format_layout.addWidget(self.inputformatTitle, 0,0,1,3)
 
         self.inputformatGroup = qtw.QButtonGroup()
-        self.thetaButton = qtw.QRadioButton("2θ (°)")
-        self.thetaButton.setToolTip("Uses supplied wavelength to display data in Q (Å⁻¹)")
+        self.thetaButton = qtw.QRadioButton("2θ [°]")
+        self.thetaButton.setToolTip("Uses supplied wavelength to display data in Q [Å⁻¹]")
         self.inputformatGroup.addButton(self.thetaButton)
         self.input_format_layout.addWidget(self.thetaButton, 1,0)
 
-        self.qButton = qtw.QRadioButton("Q (Å⁻¹)")
+        self.qButton = qtw.QRadioButton("Q [Å⁻¹]")
         self.qButton.setChecked(True)
         self.inputformatGroup.addButton(self.qButton)
         self.input_format_layout.addWidget(self.qButton, 1,1)
 
-        self.rButton = qtw.QRadioButton("r (Å)")
+        self.rButton = qtw.QRadioButton("r [Å]")
         self.inputformatGroup.addButton(self.rButton)
         self.input_format_layout.addWidget(self.rButton, 1,2)
 
@@ -257,7 +288,7 @@ class MainWindow(qtw.QMainWindow):
         )
 
         self.plotDataButton = qtw.QPushButton("Plot input dataset")
-        self.plotDataButton.setSizePolicy(qtw.QSizePolicy.Policy.MinimumExpanding, qtw.QSizePolicy.Policy.Fixed)
+        self.plotDataButton.setSizePolicy(qtw.QSizePolicy.Policy.MinimumExpanding, qtw.QSizePolicy.Policy.Ignored)
         self.grid.addWidget(self.plotDataButton, 2, 0)
 
         #############################
@@ -355,12 +386,9 @@ class MainWindow(qtw.QMainWindow):
         "randomized: Runs randomized SVD")
 
         # Only for 'arpack' solver
-        self.PCAtolSpinbox = qtw.QSpinBox()
-        self.PCAtolSpinbox.setPrefix("1e")
-        self.PCAtolSpinbox.setMinimum(-20)
-        self.PCAtolSpinbox.setMaximum(0)
+        self.PCAtolSpinbox = SciSpinBox()
+        self.PCAtolSpinbox.setMinimum(0)
         self.PCAtolSpinbox.setValue(0)
-        self.PCAtolSpinbox.setSingleStep(1)
         self.algorithm_parameters_layout.addWidget(self.PCAtolSpinbox, 1,2)
         self.PCAtolSpinbox.setToolTip("[tol]\n" \
         "Tolerance for singular values using 'arpack'")
@@ -444,10 +472,10 @@ class MainWindow(qtw.QMainWindow):
         self.algorithm_parameters_layout.addWidget(self.NMFinitDropdown, 1,0)
         self.NMFinitDropdown.setToolTip("[init]\n" \
         "Method used to initialize the procedure:\n" \
-        "('nndsvda' is reccommended for XRD and 'nndsvd' is recommended for PDF)\n" \
-        "nndsvda (default): Better when sparsity is not desired\n" \
+        "('nndsvda' is recommended for PDF and 'nndsvd' is recommended for XRD)\n" \
+        "nndsvda (default): Better when sparsity is not desired (PDF)\n" \
         "random: Random non-negative matrices\n" \
-        "nndsvd: Non-negative Double Singular Value Decomposition (better for sparseness)\n" \
+        "nndsvd: Non-negative Double Singular Value Decomposition (better for sparseness) (XRD)\n" \
         "nndsvdar: Faster, less accurate alternative to NNDSVDa when sparsity is not desired")
 
         self.NMFsolverDropdown = qtw.QComboBox()
@@ -455,6 +483,7 @@ class MainWindow(qtw.QMainWindow):
         self.algorithm_parameters_layout.addWidget(self.NMFsolverDropdown, 1,1)
         self.NMFsolverDropdown.setToolTip("[solver]\n" \
         "Numerical solver to use:\n" \
+        "('mu' gives poor results with 'nndsvd' as it cannot update zeros in initialization)"
         "cd (default): Coordinate Descent\n" \
         "mu: Multiplicative Update")
 
@@ -466,12 +495,9 @@ class MainWindow(qtw.QMainWindow):
         self.NMFmax_iterSpinbox.setToolTip("[max_iter]\n" \
         "Maximum number of iterations before timing out")
 
-        self.NMFtolSpinbox = qtw.QSpinBox()
-        self.NMFtolSpinbox.setPrefix("1e")
-        self.NMFtolSpinbox.setMinimum(-20)
-        self.NMFtolSpinbox.setMaximum(0)
-        self.NMFtolSpinbox.setValue(-4)
-        self.NMFtolSpinbox.setSingleStep(1)
+        self.NMFtolSpinbox = SciSpinBox()
+        self.NMFtolSpinbox.setMinimum(0)
+        self.NMFtolSpinbox.setValue(1e-4)
         self.algorithm_parameters_layout.addWidget(self.NMFtolSpinbox, 2,1)
         self.NMFtolSpinbox.setToolTip("[tol]\n" \
         "Tolerance of the stopping condition")
@@ -588,12 +614,9 @@ class MainWindow(qtw.QMainWindow):
         self.ICAmax_iterSpinbox.setToolTip("[max_iter]\n" \
         "Maximum number of iterations during fit")
 
-        self.ICAtolSpinbox = qtw.QSpinBox()
-        self.ICAtolSpinbox.setPrefix("1e")
-        self.ICAtolSpinbox.setMinimum(-20)
-        self.ICAtolSpinbox.setMaximum(0)
-        self.ICAtolSpinbox.setValue(-4)
-        self.ICAtolSpinbox.setSingleStep(1)
+        self.ICAtolSpinbox = SciSpinBox()
+        self.ICAtolSpinbox.setMinimum(0)
+        self.ICAtolSpinbox.setValue(1e-4)
         self.algorithm_parameters_layout.addWidget(self.ICAtolSpinbox, 2,1)
         self.ICAtolSpinbox.setToolTip("[tol]\n" \
         "A positive scalar giving the tolerance at which the un-mixing matrix is considered to have converged")
@@ -642,13 +665,10 @@ class MainWindow(qtw.QMainWindow):
         "Maximum number of iterations before terminating optimzation")
 
         self.SNMFtol_SciSpinbox = SciSpinBox()
+        self.SNMFtol_SciSpinbox.setMinimum(0)
         self.SNMFtol_SciSpinbox.setValue(5e-07)
-        #self.SNMFtol_SciSpinbox.setPrefix("1e")
-        #self.SNMFtol_SciSpinbox.setMinimum(-20)
-        #self.SNMFtol_SciSpinbox.setMaximum(0)
-        #self.SNMFtol_SciSpinbox.setSingleStep(1)
         self.algorithm_parameters_layout.addWidget(self.SNMFtol_SciSpinbox, 2,2)
-        self.SNMFtol_SciSpinbox.setToolTip("[tol] (you can write scientific (5e-07) in this box)\n" \
+        self.SNMFtol_SciSpinbox.setToolTip("[tol]\n" \
         "Convergence threshold.\n" \
         "Minimum fractional improvment to allow terminating optimization")
 
@@ -659,7 +679,7 @@ class MainWindow(qtw.QMainWindow):
         #self.SNMFrho_Spinbox.setMaximum(10000000000)
         #self.SNMFrho_Spinbox.setSingleStep(1)
         self.algorithm_parameters_layout.addWidget(self.SNMFrho_SciSpinbox, 3,0)
-        self.SNMFrho_SciSpinbox.setToolTip("[rho] (you can write scientific (2e3) in this box)\n"
+        self.SNMFrho_SciSpinbox.setToolTip("[rho]\n"
         "Stretching factor // Stretching regularization hyperparameter. Controls stretching pentalty. \n" \
         "Typically adjusted in powers of 10.\n" \
         "Zero (default) corresponds to no stretching")
@@ -702,6 +722,8 @@ class MainWindow(qtw.QMainWindow):
         self.results_layout.addWidget(self.runAnalysisButton, 0,0,2,2)
 
         self.export_results_checkbox = qtw.QCheckBox("Export results")
+        self.export_results_checkbox.setToolTip("Exports plot of dataset, and analysis plot and results\n" \
+        "For the sake of analysis in other programs data is exported in input format (2θ not converted to Q)")
         self.results_layout.addWidget(self.export_results_checkbox, 2,0,1,2)
 
         self.xrange_layout = qtw.QGridLayout()
@@ -807,6 +829,7 @@ class MainWindow(qtw.QMainWindow):
         self.indirButton.clicked.connect(self.set_indir)
         self.indirButton.clicked.connect(self.update_config_file)
         self.inputformatGroup.buttonClicked.connect(self.update_config_file)
+        self.convert2QCheckbox.clicked.connect(self.update_config_file)
         self.wavelengthWidget.valueChanged.connect(self.update_config_file)
         self.plotDataButton.clicked.connect(self.plot_dataset)
         self.algorithmGroup.buttonClicked.connect(self.display_algorithm_widgets)
@@ -849,7 +872,7 @@ class MainWindow(qtw.QMainWindow):
         file_menu.addSeparator()
 
         exit_button = qtg.QAction("Exit", self)
-        exit_button.triggered.connect(self.close_event)
+        exit_button.triggered.connect(self.closeEvent)
         file_menu.addAction(exit_button)
         
 
@@ -865,12 +888,11 @@ class MainWindow(qtw.QMainWindow):
 
         if os.path.exists(self.configfile):
             self.read_config_file()
-            self.update_config_file()
 
         self.display_algorithm_widgets()
         self.display_reconstruction_widgets()
 
-    def close_event(self, event):
+    def closeEvent(self, event):
         qtw.QApplication.quit()
 
     def about_button_clicked(self):
@@ -888,20 +910,27 @@ class MainWindow(qtw.QMainWindow):
         for widget in self.reconstruct_widgets[self.numComponentsSlider.value():]:
             widget.hide()
 
-    def set_indir(self):
-        if self.indirLabel.text() == "Select the folder containing your data files":
-            indir = str(qtw.QFileDialog.getExistingDirectory(self))
-        else:
-            indir = str(qtw.QFileDialog.getExistingDirectory(self, directory=os.path.dirname(self.indirLabel.text())))
-        if indir == "": # If the operation was cancelled
-            return None
+    def set_indir(self, indir=None):
+        if indir is None or indir is False: # Despite initialized as None, is in reality False from "Load directory" widget
+            if self.indirLabel.text() == "Select the folder containing your data files":
+                indir = str(qtw.QFileDialog.getExistingDirectory(self))
+            else:
+                indir = str(qtw.QFileDialog.getExistingDirectory(self, directory=os.path.dirname(self.indirLabel.text())))
+            if indir == "": # If the operation was cancelled
+                return None
         self.indirLabel.setText(indir)
         self.add_recentdir(indir)
 
+        # Whenever a new direcotry is loaded, import data
+        self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
+        self.plot_xmin_DSpinBox.setValue(np.min(self.angles))
+        self.plot_xmax_DSpinBox.setValue(np.max(self.angles))
+
+        return None
+
     def add_recentdir(self, recentdir):
         recentdir_button = qtg.QAction(recentdir, self)
-        recentdir_button.triggered.connect(lambda: self.indirLabel.setText(recentdir_button.text()))
-        recentdir_button.triggered.connect(lambda: self.add_recentdir(recentdir))
+        recentdir_button.triggered.connect(lambda: self.set_indir(recentdir_button.text()))
         if recentdir in (action.text() for action in self.file_submenu_recent.actions()):
             self.file_submenu_recent.removeAction(next(action for action in self.file_submenu_recent.actions() if action.text()==recentdir))
         elif len(self.file_submenu_recent.actions()) >= 10+2:
@@ -910,6 +939,7 @@ class MainWindow(qtw.QMainWindow):
             self.file_submenu_recent.insertAction(self.file_submenu_recent_separator, recentdir_button)
             return None
         self.file_submenu_recent.insertAction(self.file_submenu_recent.actions()[0], recentdir_button)
+        return None
 
     def display_algorithm_widgets(self):
         for widget in (self.PCAalgorithmWidgets +
@@ -961,7 +991,15 @@ class MainWindow(qtw.QMainWindow):
                                 if value == button.text():
                                     button.setChecked(True)
                             if value not in [button.text() for button in self.inputformatGroup.buttons()]:
-                                raise ValueError(f"Did not recognize \"{value}\" as an input format")
+                                print(f"Did not recognize \"{value}\" as an input format.\n" \
+                                      "Using default input format") #raise ValueError(f"Did not recognize \"{value}\" as an input format")
+                        case "Convert to Q":
+                            if value=="True":
+                                self.convert2QCheckbox.setChecked(True)
+                            elif value=="False":
+                                self.convert2QCheckbox.setChecked(False)
+                            else:
+                                print("Did not recognize {line} as True/False")
                         case "Wavelength":
                             self.wavelengthWidget.blockSignals(True) # blockSignals ensures .setValue doesn't trigger valeuChanged and updates the config, overwriting the load file
                             self.wavelengthWidget.setValue(float(value))
@@ -971,45 +1009,58 @@ class MainWindow(qtw.QMainWindow):
                                 if value == button.text():
                                     button.setChecked(True)
                             if value not in [button.text() for button in self.algorithmGroup.buttons()]:
-                                raise ValueError(f"Did not recognize \"{value}\" as an algorithm")
+                                print(f"Did not recognize \"{value}\" as an algorithm\n" \
+                                      "Using default algorithm") #raise ValueError(f"Did not recognize \"{value}\" as an algorithm")
                         case "Number of components":
                             self.numComponentsSlider.blockSignals(True) # blockSignals ensures .setValue doesn't trigger valeuChanged and updates the config, overwriting the load file
                             self.numComponentsSlider.setValue(int(value))
                             self.numComponentsLabel.setText(value)
                             self.numComponentsSlider.blockSignals(False)
                         case _:
-                            print(f"\"{line}\" could not be parsed")
+                            print(f"\"{line}\" could not be parsed\n" \
+                                  "Ignoring.")
 
     def update_config_file(self):
         with open(self.configfile, "w", encoding='utf-8') as outfile:
             outfile.write(f"Current file directory: {self.indirLabel.text() if self.indirLabel.text()!='Select the folder containing your data files' else ''}\n")
             outfile.write(f"Recent directories: {', '.join(action.text() for action in self.file_submenu_recent.actions()[:-2])}\n")
             outfile.write(f"Input format: {self.inputformatGroup.checkedButton().text()}\n")
+            outfile.write(f"Convert to Q: {'True' if self.convert2QCheckbox.isChecked() else 'False'}\n")
             outfile.write(f"Wavelength: {self.wavelengthWidget.value():.6f}\n")
             outfile.write(f"Algorithm: {self.algorithmGroup.checkedButton().text()}\n")
             outfile.write(f"Number of components: {self.numComponentsSlider.value()}\n")
 
     def plot_dataset(self):
         print("Plotting input dataset")
-
+        try:
+            if self.angles==None or self.intensities==None:
+              self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
+        except ValueError: # If initialized as array with more than one elements, the truth value is ambiguous
+            if self.angles.all()==None or self.intensities.all()==None:
+                self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
+        angles = self.angles
+        intensities = self.intensities
         if self.convert2QCheckbox.isChecked():
-            xlabel = "Q (Å⁻¹)"
+            xlabel = "Q [Å⁻¹]"
+            angles = theta_to_Q(angles, self.wavelengthWidget.value())
         else:
             xlabel = self.inputformatGroup.checkedButton().text()
 
-        fig = plt.figure(layout="constrained")
-
-        angles, intensities = import_dataset(self.indirLabel.text() + os.path.sep)
+        fig = plt.figure()
         cmap = plt.get_cmap('inferno')
-        colors = cmap(np.linspace(1, 0, len(intensities)))
+        colors = cmap(np.linspace(0.9, 0, len(intensities)))
         lift_scale = np.max(intensities) / (15*len(intensities))
+
         for i in range(len(intensities)-1, -1, -1):
             plt.plot(angles[i], intensities[i]+i*lift_scale, color=colors[i])
-
         plt.xlabel(xlabel)
         plt.ylabel("Intensity (staggered) [A.U.]")
         plt.xlim(np.min(angles), np.max(angles))
-        plt.ylim(np.min(intensities), np.max(intensities) + len(intensities)*lift_scale)
+        axis_padding = np.max(intensities) + (len(intensities)-1)*lift_scale
+        if self.inputformatGroup.checkedButton().text()=="r [Å]":
+            plt.ylim(np.min(intensities)*1.02, axis_padding*1.02)
+        else:
+            plt.ylim(np.min(intensities) - axis_padding*0.005, axis_padding*1.02)
         plt.ticklabel_format(axis="y", style="sci", scilimits=[0,0])
 
         # Maximize window
@@ -1023,46 +1074,54 @@ class MainWindow(qtw.QMainWindow):
                 manager.full_screen_toggle() # Fallback for some backends
 
         fig.show()
+        if self.export_results_checkbox.isChecked():
+            if not os.path.exists(f"{self.indirLabel.text()}/BaSSET_results"):
+                os.mkdir(f"{self.indirLabel.text()}/BaSSET_results")
+            fig.savefig(f"{self.indirLabel.text()}/BaSSET_results/input_dataset.png")
 
     def run_analysis(self):
         print("Beginning analysis...")
-        angles, intensities = import_dataset(self.indirLabel.text() + os.path.sep)
         numComponents = self.numComponentsSlider.value()
+        
+        try:
+            if self.angles==None or self.intensities==None:
+              self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
+        except ValueError: # If initialized as array with more than one elements, the truth value is ambiguous
+            if self.angles.all()==None or self.intensities.all()==None:
+                self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
 
-        if self.convert2QCheckbox.isChecked():
-            angles = theta_to_Q(angles, self.wavelengthWidget.value())
-
+        errors = None
+        lift_factor = None
+        stretch = None
         match self.algorithmGroup.checkedButton().text():
             case "PCA":
-                fitted, transformed, reconstructed = PCA_analysis(intensities, numComponents,
+                fitted, transformed, reconstructed = PCA_analysis(self.intensities, numComponents,
                                                                   whiten=self.PCAwhitenCheck.isChecked(),
                                                                   svd_solver=self.PCAsolverDropdown.currentText(),
-                                                                  tol=10**(self.PCAtolSpinbox.value()),
+                                                                  tol=self.PCAtolSpinbox.value(),
                                                                   iterated_power='auto' if self.PCAiterated_powerAutoCheckbox.isChecked else self.PCAiterated_powerSpinbox.value(),
                                                                   n_oversamples=self.PCAn_oversampledSpinbox.value(),
                                                                   power_iteration_normalizer=self.PCApower_iteration_normalizerDropdown.currentText())
-                errors = None
             case "NMF":
-                fitted, transformed, reconstructed, errors = NMF_analysis(intensities, numComponents,
-                                                                          init=self.NMFinitDropdown.currentText(),
-                                                                          solver=self.NMFsolverDropdown.currentText(),
-                                                                          beta_loss=self.NMFbeta_lossDropdown.currentText(),
-                                                                          tol=10**(self.NMFtolSpinbox.value()),
-                                                                          max_iter=self.NMFmax_iterSpinbox.value(),
-                                                                          alpha_W=self.NMFalpha_WDSpinbox.value(),
-                                                                          alpha_H='same' if self.NMFalpha_HsameCheckbox.isChecked() else self.NMFalpha_HDSpinbox.value(),
-                                                                          l1_ratio=self.NMFl1_ratioDSpinbox.value())
+                fitted, transformed, reconstructed, errors, lift_factor = NMF_analysis(self.intensities, numComponents,
+                                                                           init=self.NMFinitDropdown.currentText(),
+                                                                           solver=self.NMFsolverDropdown.currentText(),
+                                                                           beta_loss=self.NMFbeta_lossDropdown.currentText() if self.NMFsolverDropdown.currentText()=="mu" else "frobenius",
+                                                                           tol=self.NMFtolSpinbox.value(),
+                                                                           max_iter=self.NMFmax_iterSpinbox.value(),
+                                                                           alpha_W=self.NMFalpha_WDSpinbox.value(),
+                                                                           alpha_H='same' if self.NMFalpha_HsameCheckbox.isChecked() else self.NMFalpha_HDSpinbox.value(),
+                                                                           l1_ratio=self.NMFl1_ratioDSpinbox.value())
             case "ICA":
-                fitted, transformed, reconstructed = ICA_analysis(intensities, numComponents,
+                fitted, transformed, reconstructed = ICA_analysis(self.intensities, numComponents,
                                                                   algorithm=self.ICAalgorithmDropdown.currentText(),
                                                                   whiten=False if self.ICAwhitenDropdown.currentText()=='False' else self.ICAwhitenDropdown.currentText(),
                                                                   fun=self.ICAfunDropdown.currentText(),
                                                                   max_iter=self.ICAmax_iterSpinbox.value(),
-                                                                  tol=10**(self.ICAtolSpinbox.value()),
+                                                                  tol=self.ICAtolSpinbox.value(),
                                                                   whiten_solver=self.ICAwhiten_solverDropdown.currentText())
-                errors = None
             case "SNMF":
-                fitted, transformed, stretch, reconstructed = SNMF_analysis(intensities, numComponents, # errors
+                fitted, transformed, stretch, reconstructed = SNMF_analysis(self.intensities, numComponents, # errors
                                                                             min_iter=self.SNMFmin_iterSpinbox.value(),
                                                                             max_iter=self.SNMFmax_iterSpinbox.value(),
                                                                             tol=self.SNMFtol_SciSpinbox.value(),
@@ -1070,17 +1129,19 @@ class MainWindow(qtw.QMainWindow):
                                                                             eta=self.SNMFeta_DSpinbox.value())
 
         print("Analysis completed")
-        self.plot_analysis(angles, intensities, numComponents, fitted, transformed, reconstructed, errors)
+        self.plot_analysis(numComponents, fitted, transformed, reconstructed, errors, lift_factor, stretch)
 
-    def plot_analysis(self, angles, intensities, numComponents, fitted, transformed, reconstructed, errors=None):
+    def plot_analysis(self, numComponents, fitted, transformed, reconstructed, errors=None, lift_factor=None, stretch=None):
         if numComponents < 3:
             plotwidth = 3
         else:
             plotwidth = numComponents
 
         if self.convert2QCheckbox.isChecked():
-            xlabel = "Q (Å⁻¹)"
+            xlabel = "Q [Å⁻¹]"
+            angles = theta_to_Q(self.angles, self.wavelengthWidget.value())
         else:
+            anglse = self.angles
             xlabel = self.inputformatGroup.checkedButton().text()
 
         reconNum = []
@@ -1096,27 +1157,29 @@ class MainWindow(qtw.QMainWindow):
             reconNum.append(len(reconstructed)-1)  # By using numComponents-1 and appending the end-point we get first and last scan
 
         cmap = plt.get_cmap('inferno')
-        colors = cmap(np.linspace(0, 1, numComponents))
+        colors = cmap(np.linspace(0, 0.9, numComponents))
 
         fig, axs = plt.subplots(3, plotwidth, layout="constrained", )#, gridspec_kw = {"hspace":0.1})
         for i in range(numComponents):
             axs[0][i].plot(angles[i], fitted.components_[i], "k")
             axs[0][i].set_title(f"Component {i+1}")
             axs[0][i].set_xlabel(xlabel)
+            #axs[0][i].set_ylabel("Intensity [A.U.]")
             axs[0][i].set_xlim(self.plot_xmin_DSpinBox.value(), min((self.plot_xmax_DSpinBox.value(), max(angles[i]))))
             axs[0][i].set_ylim(min(fitted.components_[i])-max(fitted.components_[i])*0.025, max(fitted.components_[i])*1.025)
 
             axs[1][i].plot(angles[reconNum[i]], reconstructed[reconNum[i]], color="#DD0000", label="Reconstructed")
-            axs[1][i].plot(angles[reconNum[i]], intensities[reconNum[i]], "k:", label="Original")
-            axs[1][i].plot(angles[reconNum[i]], intensities[reconNum[i]]-reconstructed[reconNum[i]], color="#2EC483", label="Difference")
+            axs[1][i].plot(angles[reconNum[i]], self.intensities[reconNum[i]], "k:", label="Original")
+            axs[1][i].plot(angles[reconNum[i]], self.intensities[reconNum[i]]-reconstructed[reconNum[i]], color="#2EC483", label="Difference")
             axs[1][i].ticklabel_format(axis="y", style="sci", scilimits=[0,0])
             axs[1][i].set_title(f"Scan {reconNum[i]+1}") # Reconstruction num
             axs[1][i].set_xlabel(xlabel)
+            #axs[1][i].set_ylabel("Intensity [A.U.]")
             axs[1][i].sharex(axs[0][i])
             #axs[1][i].set_xlim(self.plot_xmin_DSpinBox.value(), min((self.plot_xmax_DSpinBox.value(), max(angles[i]))))
-            axs[1][i].set_ylim(min(intensities[reconNum[i]])-max(intensities[reconNum[i]])*0.025, max(intensities[reconNum[i]])*1.025)
+            axs[1][i].set_ylim(min(self.intensities[reconNum[i]])-max(self.intensities[reconNum[i]])*0.025, max(self.intensities[reconNum[i]])*1.025)
 
-            axs[2][0].plot(np.arange(1,len(angles)+1), transformed[:,i], color=colors[i], label=f"{i+1}")
+            axs[2][0].plot(np.arange(1,len(angles)+1), transformed[:,i], color=colors[i], label=f"Comp. {i+1}")
         
         for i in range(numComponents-1):
             axs[0][i].sharex(axs[0][i+1])
@@ -1124,24 +1187,28 @@ class MainWindow(qtw.QMainWindow):
         axs[1][numComponents-1].legend()
 
         for i in range(len(reconNum)):
-            axs[2][0].axvline(reconNum[i]+1, color="k", linestyle=":", label="Scans" if i==0 else '')
+            axs[2][0].axvline(reconNum[i]+1, color="k", linestyle=":", label="Recons" if i==0 else '')
         axs[2][0].ticklabel_format(axis="y", style="sci", scilimits=[0,0])
-        axs[2][0].legend()
+        l, h = axs[2][0].get_legend_handles_labels()
+        axs[2][1].legend(l, h, title="Scores legend", frameon=True)
         axs[2][0].set_title("Scores")
+        axs[2][0].set_xlabel("Scan #")
+        axs[2][0].set_xlim(0, len(angles)+1)
+        axs[2][0].set_ylim(min(0,np.min(transformed)), np.max(transformed))
 
         match self.algorithmGroup.checkedButton().text():
             case "PCA":
-                axs[2][1].plot(np.arange(1, min(10,min(np.shape(intensities)))+1), fitted.explained_variance_ratio_*100, "ko-")
+                axs[2][1].plot(np.arange(1, min(10,min(np.shape(self.intensities)))+1), fitted.explained_variance_ratio_*100, "ko--")
                 axs[2][1].set_title("Explained variances")
             case "NMF":
-                axs[2][1].plot(np.arange(1, min(10,min(np.shape(intensities)))+1), errors, "ko-")
+                axs[2][1].plot(np.arange(1, min(10,min(np.shape(self.intensities)))+1), errors, "ko--")
                 axs[2][1].set_title("Reconstruction error")
             case "SNMF":
                 NotImplemented
                 """
-                axs[2][1].plot(np.arange(1, min(10,min(np.shape(intensities)))+1), errors, "ko-")
+                axs[2][1].plot(np.arange(1, min(10,min(np.shape(intensities)))+1), errors, "ko--")
                 axs[2][1].set_title("Reconstruction error (Not Implemented)")
-                axs[2][2].plot(np.arange(1, min(10,min(np.shape(intensities)))+1, stretch, "ko-"))
+                axs[2][2].plot(np.arange(1, min(10,min(np.shape(intensities)))+1, stretch, "ko--"))
                 axs[2][2].set_title("Stretching")
                 """
 
@@ -1163,9 +1230,9 @@ class MainWindow(qtw.QMainWindow):
 
         if self.export_results_checkbox.isChecked():
             print("Exporting results")
-            self.export_results(angles, intensities, fitted, transformed, reconstructed, fig, errors)
+            self.export_results(fitted, transformed, reconstructed, fig, errors, lift_factor, stretch)
 
-    def write_summary(self, results_path, errors=None):
+    def write_summary(self, results_path, errors=None, lift_factor=None):
         with open(f"{results_path}/summary.txt", "w") as outfile:
             outfile.write(f"Summary of {self.numComponentsSlider.value()} component {self.algorithmGroup.checkedButton().text()} analysis of data in \"...{self.indirLabel.text()[-51:]}\"\n\n")
             outfile.write("The following algorithm parameters where used:\n")
@@ -1173,7 +1240,7 @@ class MainWindow(qtw.QMainWindow):
                 case "PCA":
                     outfile.write(f"Whiten: {self.PCAwhitenCheck.isChecked()}\n")
                     outfile.write(f"SVD solver: {self.PCAsolverDropdown.currentText()}\n")
-                    if self.PCAsolverDropdown.currentText()=="arpack": outfile.write(f"Tolerance: {10**self.PCAtolSpinbox.value()}\n")
+                    if self.PCAsolverDropdown.currentText()=="arpack": outfile.write(f"Tolerance: {self.PCAtolSpinbox.value()}\n")
                     if self.PCAsolverDropdown.currentText()=="randomized":
                         outfile.write(f"# of iterations (Power method): {self.PCAiterated_powerSpinbox() if self.PCAiterated_powerAutoCheckbox.isChecked() else 'auto'}\n")
                         outfile.write(f"Additional vectors to sample data: {self.PCAn_oversampledSpinbox.value()}\n")
@@ -1183,27 +1250,34 @@ class MainWindow(qtw.QMainWindow):
                     outfile.write(f"Initialization method: {self.NMFinitDropdown.currentText()}\n")
                     outfile.write(f"Numerical solver: {self.NMFsolverDropdown.currentText()}\n")
                     if self.NMFsolverDropdown.currentText()=='mu': outfile.write(f"Beta divergence to minimize: {self.NMFbeta_lossDropdown.currentText()}\n")
-                    outfile.write(f"Tolerance: {10**self.NMFtolSpinbox.value()}\n")
+                    outfile.write(f"Tolerance: {self.NMFtolSpinbox.value()}\n")
                     outfile.write(f"Maximum number of iterations: {self.NMFmax_iterSpinbox.value()}\n")
                     outfile.write(f"Regularization constant for features: {self.NMFalpha_WDSpinbox.value()}\n")
                     outfile.write(f"Regularization constant for samples: {self.NMFalpha_HDSpinbox.value()}\n") # Should work even if alpha_Hsame=True
                     outfile.write(f"Regularization mixing parameter (0=l2, 1=l1): {self.NMFl1_ratioDSpinbox.value()}\n")
                     outfile.write(f"\nThe NMF reconstruction error for {self.numComponentsSlider.value()} components was: {errors[self.numComponentsSlider.value()+1]:.2f}\n")
+                    if lift_factor<0: outfile.write(f"Due to negative values, your dataset was lifted by {lift_factor} during analysis, before subsequent lowering\n")
                 case "ICA":
                     outfile.write(f"Algorithm: {self.ICAalgorithmDropdown.currentText()}\n")
                     outfile.write(f"Whitening strategy: {self.ICAwhitenDropdown.currentText()}\n")
                     outfile.write(f"Whitening solver: {self.ICAwhiten_solverDropdown.currentText()}\n")
                     outfile.write(f"Functional G form function: {self.ICAfunDropdown.currentText()}\n")
                     outfile.write(f"Maximum number of iterations: {self.ICAmax_iterSpinbox.value()}\n")
-                    outfile.write(f"Tolerance: {10**self.ICAtolSpinbox.value()}\n")
+                    outfile.write(f"Tolerance: {self.ICAtolSpinbox.value()}\n")
+                case "SNMF":
+                    outfile.write(f"Minimum number of iterations: {self.SNMFmin_iterSpinbox.value()}\n")
+                    outfile.write(f"Maximum number of iterations: {self.SNMFmax_iterSpinbox.value()}\n")
+                    outfile.write(f"Tolerance: {self.SNMFtol_SciSpinbox.value()}\n")
+                    outfile.write(f"Stretching factor: {self.SNMFrho_SciSpinbox.value()}\n")
+                    outfile.write(f"Sparsity factor: {self.SNMFeta_DSpinbox.value()}\n")
         print("Summary written")
 
-    def write_components(self, results_path, angles, fitted):
+    def write_components(self, results_path, fitted):
         os.mkdir(f"{results_path}/components")
         for i, component in enumerate(fitted.components_):
             with open(f"{results_path}/components/component_{i+1:0{2}}.xy", "w") as outfile:
-                for j in range(len(angles[i])):
-                    outfile.write(f"{angles[i][j]}\t{component[j]}\n")
+                for j in range(len(self.angles[i])):
+                    outfile.write(f"{self.angles[i][j]}\t{component[j]}\n")
         print("Components written")
 
     def write_scores(self, results_path, transformed):
@@ -1218,33 +1292,38 @@ class MainWindow(qtw.QMainWindow):
                 outfile.write(f"{transformed[i][len(transformed[0])-1]}\n")
         print("Scores written")
 
-    def write_reconstructions(self, results_path, angles, intensities, reconstructed):
+    def write_reconstructions(self, results_path, reconstructed):
         os.mkdir(f"{results_path}/reconstructions")
         for i in range(len(reconstructed)):
             with open(f"{results_path}/reconstructions/recon_scan_{i+1:0{4}}.xy", "w") as outfile:
-                for j in range(len(angles[i])):
-                    outfile.write(f"{angles[i][j]}\t{reconstructed[i][j]}\n")
+                for j in range(len(self.angles[i])):
+                    outfile.write(f"{self.angles[i][j]}\t{reconstructed[i][j]}\n")
         print("Reconstructions written")
         for i in range(len(reconstructed)):
             with open(f"{results_path}/reconstructions/diff_scan_{i+1:0{4}}.xy", "w") as outfile:
-                for j in range(len(angles[i])):
-                    outfile.write(f"{angles[i][j]}\t{intensities[i][j]-reconstructed[i][j]}\n")
+                for j in range(len(self.angles[i])):
+                    outfile.write(f"{self.angles[i][j]}\t{self.intensities[i][j]-reconstructed[i][j]}\n")
         print("Differences written")
 
-    def export_results(self, angles, intensities, fitted, transformed, reconstructed, fig=None, errors=None):
+    def write_stretch(self, results_path, stretch):
+        NotImplemented
+
+    def export_results(self, fitted, transformed, reconstructed, fig=None, errors=None, lift_factor=None, stretch=None):
         if not os.path.exists(f"{self.indirLabel.text()}/BaSSET_results"):
             os.mkdir(f"{self.indirLabel.text()}/BaSSET_results")
 
         export_time = datetime.now().strftime("%y%m%d-%H%M%S")
         results_path = f"{self.indirLabel.text()}/BaSSET_results/{export_time}_{self.algorithmGroup.checkedButton().text()}_{self.numComponentsSlider.value()}"
         os.mkdir(results_path)
-
         if fig!=None:
             fig.savefig(f"{results_path}/overview.jpg")
-        self.write_summary(results_path, errors)
-        self.write_components(results_path, angles, fitted)
+        self.write_summary(results_path, errors, lift_factor)
+        self.write_components(results_path, fitted)
         self.write_scores(results_path, transformed)
-        self.write_reconstructions(results_path, angles, intensities, reconstructed)
+        self.write_reconstructions(results_path, reconstructed)
+        if self.algorithmGroup.checkedButton().text()=="SNMF":
+            self.write_stretch(results_path, stretch)
+        print("Exporting results completed")
 
 class AboutDialog(qtw.QDialog):
     def __init__(self, parent=None):
