@@ -53,7 +53,7 @@ def import_data(filename):
         x, y = np.loadtxt(filename, unpack=True, comments='#', usecols=(0,1))
         return x, y
     except ValueError:
-        print("Couldn't read file with deafult # comments, reading file line by line")
+        #print("Couldn't read file with default # comments, reading file line by line")
         pass
     with open(filename, "r") as infile:
         lines = infile.readlines()
@@ -95,7 +95,7 @@ def import_dataset(dir):
         x_data.append(x)
         y_data.append(y)
 
-    print("Dataset imported")
+    print("Dataset imported\n")
     return np.array(x_data), np.array(y_data)
 
 def theta_to_Q(angles, wavelength):
@@ -115,27 +115,32 @@ def PCA_analysis(intensities, numComponents, whiten, svd_solver, tol, iterated_p
 
     return X, transformed, reconstructed
 
-def NMF_analysis(intensities, numComponents, init, solver, beta_loss, tol, max_iter, alpha_W, alpha_H, l1_ratio):
-    n_components_list = np.arange(1, min(10,min(np.shape(intensities)))+1, dtype=int)
-    errors = np.empty(len(n_components_list))
-    X = None
-    transformed = None
-    reconstructed = None
-
+def NMF_analysis(intensities, numComponents, init, solver, beta_loss, tol, max_iter, alpha_W, alpha_H, l1_ratio, calc_err):
     lift_factor = intensities.min()
     if lift_factor < 0:
         intensities -= lift_factor
         print("Negative value found in dataset. Lifting data above zero")
 
-    for i, n_components in enumerate(n_components_list):
-        print(f"Calculating NMF reconstruction error for {n_components} components")
-        nmf = NMF(n_components=n_components, init=init, solver=solver, beta_loss=beta_loss, tol=tol, max_iter=max_iter, alpha_W=alpha_W, alpha_H=alpha_H, l1_ratio=l1_ratio)
-        X_temp = nmf.fit(intensities)
-        errors[i] = X_temp.reconstruction_err_
-        if numComponents == n_components:
-            X = X_temp
-            transformed = nmf.transform(intensities)
-            reconstructed = nmf.inverse_transform(transformed)
+    if calc_err:
+        n_components_list = np.arange(1, min(10,min(np.shape(intensities)))+1, dtype=int)
+        errors = np.empty(len(n_components_list))
+        for i, n_components in enumerate(n_components_list):
+            print(f"Calculating NMF reconstruction error for {n_components} components")
+            nmf = NMF(n_components=n_components, init=init, solver=solver, beta_loss=beta_loss, tol=tol, max_iter=max_iter, alpha_W=alpha_W, alpha_H=alpha_H, l1_ratio=l1_ratio)
+            X_temp = nmf.fit(intensities)
+            errors[i] = X_temp.reconstruction_err_
+            print(f"    NMF ({n_components}) reconstruction error: {X_temp.reconstruction_err_:10f}")
+            if numComponents == n_components:
+                X = X_temp
+                transformed = nmf.transform(intensities)
+                reconstructed = nmf.inverse_transform(transformed)
+    else:
+        nmf = NMF(n_components=numComponents, init=init, solver=solver, beta_loss=beta_loss, tol=tol, max_iter=max_iter, alpha_W=alpha_W, alpha_H=alpha_H, l1_ratio=l1_ratio)
+        errors = None
+        X = nmf.fit(intensities)
+        transformed = nmf.transform(intensities)
+        reconstructed = nmf.inverse_transform(transformed)
+        print(f"    NMF ({numComponents}) reconstruction error: {X.reconstruction_err_:10f}")
 
     if lift_factor < 0: # Lower data below zero again
         intensities += lift_factor
@@ -152,39 +157,34 @@ def ICA_analysis(intensities, numComponents, algorithm, whiten, fun, max_iter, t
 
     return X, transformed, reconstructed
 
-def SNMF_analysis(intensities, numComponents, min_iter, max_iter, tol, rho, eta):
-    """
-    n_components_list = np.arange(1, min(10,min(np.shape(intensities)))+1, dtype=int)
-    errors = np.empty(len(n_components_list))
-    X = None
-    transformed = None
-    reconstructed = None
-    """
+def SNMF_analysis(intensities, numComponents, min_iter, max_iter, tol, rho, eta, calc_err):
     # SNMF automatically handles lifts negative values, so no if-case needed
-    """
-    for i, n_components in enumerate(n_components_list):
-        print(f"Calculating SNMF reconstruction error for {n_components} components")
-        snmf = SNMFOptimizer(n_components=n_components, min_iter=min_iter, max_iter=max_iter, tol=tol, rho=rho, eta=eta, show_plots=True)
-        print(f"n_components={n_components}, min_iter={min_iter}, max_iter={max_iter}, tol={tol}, rho={rho}, eta={eta}")
-        X_temp = snmf.fit(intensities)
-        errors[i] = X_temp.reconstruction_err_
-        if numComponents == n_components:
-            X = X_temp
-            transformed = snmf.weights_
-            stretch = snmf.stretch_
-            reconstructed = snmf.reconstruct_matrix(snmf.components_, transformed, stretch)
+    calc_err=False
+
+    if calc_err:
+        n_components_list = np.arange(1, min(10,min(np.shape(intensities)))+1, dtype=int)
+        errors = np.empty(len(n_components_list))
+        for i, n_components in enumerate(n_components_list):
+            print(f"Calculating SNMF reconstruction error for {n_components} components")
+            snmf = SNMFOptimizer(n_components=n_components, min_iter=min_iter, max_iter=max_iter, tol=tol, rho=rho, eta=eta, show_plots=True)
+            X_temp = snmf.fit(intensities)
+            errors[i] = X_temp.reconstruction_err_
+            print(f"    SNMF ({n_components}) reconstruction error: {X_temp.reconstruction_err_:10f}")
+            if numComponents == n_components:
+                X = X_temp
+                transformed = snmf.weights_
+                stretch = snmf.stretch_
+                reconstructed = snmf.reconstruct_matrix(snmf.components_, transformed, stretch)
+    else:
+        snmf = SNMFOptimizer(n_components=numComponents, min_iter=min_iter, max_iter=max_iter, tol=tol, rho=rho, eta=eta, show_plots=True, verbose=True)
+        errors = None
+        X = snmf.fit(intensities)
+        transformed = snmf.weights_
+        stretch = snmf.stretch_
+        reconstructed = snmf.reconstruct_matrix(snmf.components_, transformed, stretch)
+        print(f"    NMF ({numComponents}) reconstruction error: {X.reconstruction_err_:10f}")
 
     return X, transformed, reconstructed, errors, stretch
-    """
-
-    print(f"Calculating SNMF reconstruction error for {numComponents} components")
-    snmf = SNMFOptimizer(n_components=numComponents, min_iter=min_iter, max_iter=max_iter, tol=tol, rho=rho, eta=eta, show_plots=True, verbose=True)
-    X = snmf.fit(intensities)
-    transformed = snmf.weights_
-    stretch = snmf.stretch_
-    reconstructed = snmf.reconstruct_matrix(snmf.components_, transformed, stretch)
-
-    return X, transformed, reconstructed, stretch
 
 class SciSpinBox(qtw.QDoubleSpinBox):
     def __init__(self, *args, **kwargs):
@@ -275,11 +275,13 @@ class MainWindow(qtw.QMainWindow):
             if button==self.thetaButton
             else self.convert2QCheckbox.setDisabled(True)
         )
+        self.rButton.clicked.connect(lambda: self.convert2QCheckbox.setChecked(False))
 
         self.wavelengthWidget = qtw.QDoubleSpinBox(decimals=6)
         self.wavelengthWidget.setMinimum(0)
         self.wavelengthWidget.setSingleStep(0.000001)
         self.wavelengthWidget.setSuffix(' Å')
+        self.wavelengthWidget.setValue(1.540598)
         self.indir_options_layout.addWidget(self.wavelengthWidget)
         self.inputformatGroup.buttonClicked.connect(
             lambda button: self.wavelengthWidget.setEnabled(True)
@@ -318,7 +320,9 @@ class MainWindow(qtw.QMainWindow):
         self.algorithm_layout.addWidget(self.ICAButton, 1,2)
 
         self.SNMFButton = qtw.QRadioButton("SNMF")
-        self.SNMFButton.setToolTip("Stretched Non-Negative Matrix Factorization (diffpy)")
+        self.SNMFButton.setToolTip("Stretched Non-Negative Matrix Factorization (diffpy)" \
+                                   "WARNING: The SNMF algorithm takes a lot of time.\n" \
+                                   "Error calculation will not be performed.")
         self.algorithm_layout.addWidget(self.SNMFButton, 2,0)
 
         self.algorithmGroup.addButton(self.PCAButton)
@@ -483,13 +487,13 @@ class MainWindow(qtw.QMainWindow):
         self.algorithm_parameters_layout.addWidget(self.NMFsolverDropdown, 1,1)
         self.NMFsolverDropdown.setToolTip("[solver]\n" \
         "Numerical solver to use:\n" \
-        "('mu' gives poor results with 'nndsvd' as it cannot update zeros in initialization)"
         "cd (default): Coordinate Descent\n" \
-        "mu: Multiplicative Update")
+        "mu: Multiplicative Update\n" \
+        "('mu' gives poor results with 'nndsvd' as it cannot update zeros in initialization)")
 
         self.NMFmax_iterSpinbox = qtw.QSpinBox()
         self.NMFmax_iterSpinbox.setMinimum(0)
-        self.NMFmax_iterSpinbox.setMaximum(99999)
+        self.NMFmax_iterSpinbox.setMaximum(999999)
         self.NMFmax_iterSpinbox.setValue(2500)
         self.algorithm_parameters_layout.addWidget(self.NMFmax_iterSpinbox, 2,0)
         self.NMFmax_iterSpinbox.setToolTip("[max_iter]\n" \
@@ -511,8 +515,8 @@ class MainWindow(qtw.QMainWindow):
         self.algorithm_parameters_layout.addWidget(self.NMFl1_ratioDSpinbox, 1,2)
         self.NMFl1_ratioDSpinbox.setToolTip("[l1_ratio]\n" \
         "Regularization mixing parameter:\n" \
-        "(0, default): elementwise l2 penalty aka. Frobenius Norm\n"
-        "(1): elementwwise l1 penalty (1)\n")
+        "(0, default): elementwise L2 penalty aka. Frobenius Norm\n"
+        "(1): elementwwise L1 penalty (better for sparseness)\n")
         self.NMFsolverDropdown.currentTextChanged.connect(
             lambda currentText: self.NMFl1_ratioDSpinbox.show()
             if currentText=='cd'
@@ -551,12 +555,14 @@ class MainWindow(qtw.QMainWindow):
         self.NMFalpha_HDSpinbox.setValue(0)
         self.NMFalpha_HDSpinbox.setDecimals(5)
         self.NMFalpha_HDSpinbox.setSingleStep(0.00005)
+        self.NMFalpha_HDSpinbox.setDisabled(True)
         self.algorithm_parameters_layout.addWidget(self.NMFalpha_HDSpinbox, 3,1)
         self.NMFalpha_HDSpinbox.setToolTip("[alpha_H]\n" \
-        "Constant that multiplies the regularization terms of the feature mixing:\n" \
-        "0 means no regularization")
+        "Constant that multiplies the regularization terms of the mixing of features:\n" \
+        "0 means no regularization. By default same as alpha_W ")
 
         self.NMFalpha_HsameCheckbox = qtw.QCheckBox("same")
+        self.NMFalpha_HsameCheckbox.setChecked(True)
         self.algorithm_parameters_layout.addWidget(self.NMFalpha_HsameCheckbox, 3,2)
         self.NMFalpha_HsameCheckbox.setToolTip("[alpha_H]\n" \
         "Use same regularization constant for features and mixing")
@@ -608,7 +614,7 @@ class MainWindow(qtw.QMainWindow):
 
         self.ICAmax_iterSpinbox = qtw.QSpinBox()
         self.ICAmax_iterSpinbox.setMinimum(0)
-        self.ICAmax_iterSpinbox.setMaximum(99999)
+        self.ICAmax_iterSpinbox.setMaximum(999999)
         self.ICAmax_iterSpinbox.setValue(2500)
         self.algorithm_parameters_layout.addWidget(self.ICAmax_iterSpinbox, 2,0)
         self.ICAmax_iterSpinbox.setToolTip("[max_iter]\n" \
@@ -650,7 +656,7 @@ class MainWindow(qtw.QMainWindow):
         ###########################
         self.SNMFmin_iterSpinbox = qtw.QSpinBox()
         self.SNMFmin_iterSpinbox.setMinimum(0)
-        self.SNMFmin_iterSpinbox.setMaximum(99999)
+        self.SNMFmin_iterSpinbox.setMaximum(999999)
         self.SNMFmin_iterSpinbox.setValue(20)
         self.algorithm_parameters_layout.addWidget(self.SNMFmin_iterSpinbox, 2,0)
         self.SNMFmin_iterSpinbox.setToolTip("[min_iter]\n" \
@@ -658,7 +664,7 @@ class MainWindow(qtw.QMainWindow):
 
         self.SNMFmax_iterSpinbox = qtw.QSpinBox()
         self.SNMFmax_iterSpinbox.setMinimum(0)
-        self.SNMFmax_iterSpinbox.setMaximum(99999)
+        self.SNMFmax_iterSpinbox.setMaximum(999999)
         self.SNMFmax_iterSpinbox.setValue(500)
         self.algorithm_parameters_layout.addWidget(self.SNMFmax_iterSpinbox, 2,1)
         self.SNMFmax_iterSpinbox.setToolTip("[max_iter]\n" \
@@ -700,15 +706,10 @@ class MainWindow(qtw.QMainWindow):
         # random_state
         # verbose
         # show_plots
-
-        self.SNMFwarningLabel = qtw.QLabel("WARNING: The SNMF algorithm takes a lot of time.\n" \
-        "Error calculation will not be performed.")
-        self.SNMFwarningLabel.setWordWrap(True)
-        self.grid.addWidget(self.SNMFwarningLabel, 3, 0)
         
         self.SNMFalgorithmWidgets = [self.SNMFmin_iterSpinbox, self.SNMFmax_iterSpinbox,
                                      self.SNMFtol_SciSpinbox, self.SNMFrho_SciSpinbox,
-                                     self.SNMFeta_DSpinbox, self.SNMFwarningLabel]
+                                     self.SNMFeta_DSpinbox]
         
         #####################################
         ##### Analysis and plot widgets #####
@@ -721,10 +722,15 @@ class MainWindow(qtw.QMainWindow):
         self.runAnalysisButton.setSizePolicy(qtw.QSizePolicy.Policy.MinimumExpanding, qtw.QSizePolicy.Policy.MinimumExpanding)
         self.results_layout.addWidget(self.runAnalysisButton, 0,0,2,2)
 
+        self.calc_err_CheckBox = qtw.QCheckBox("Calculate errors")
+        self.calc_err_CheckBox.setChecked(True)
+        self.calc_err_CheckBox.setToolTip("Calculates errors for 1 to 10 components")
+        self.results_layout.addWidget(self.calc_err_CheckBox, 2,0)
+
         self.export_results_checkbox = qtw.QCheckBox("Export results")
         self.export_results_checkbox.setToolTip("Exports plot of dataset, and analysis plot and results\n" \
         "For the sake of analysis in other programs data is exported in input format (2θ not converted to Q)")
-        self.results_layout.addWidget(self.export_results_checkbox, 2,0,1,2)
+        self.results_layout.addWidget(self.export_results_checkbox, 2,1)
 
         self.xrange_layout = qtw.QGridLayout()
         self.grid.addLayout(self.xrange_layout, 2,2)
@@ -751,76 +757,77 @@ class MainWindow(qtw.QMainWindow):
         self.plot_xmax_DSpinBox.setSingleStep(0.01)
         self.xrange_layout.addWidget(self.plot_xmax_DSpinBox, 3,1)
         self.plot_xmax_DSpinBox.setToolTip("Maximum x-value in plots")
-        
-        self.plot_layout = qtw.QGridLayout()
-        self.grid.addLayout(self.plot_layout, 3,2)
 
-        self.reconstruct_label = qtw.QLabel("Plot Reconstruction Scan")
+        self.recon_plot_layout = qtw.QGridLayout()
+        self.grid.addLayout(self.recon_plot_layout, 3,2)
+        self.recon_plot_layout.setAlignment(qtc.Qt.AlignmentFlag.AlignTop)
+
+        self.reconstruct_label = qtw.QLabel("Display Reconstruction Scan #")
         self.reconstruct_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
         self.reconstruct_label.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
-        self.plot_layout.addWidget(self.reconstruct_label, 4,0,1,2)
+        self.recon_plot_layout.addWidget(self.reconstruct_label, 4,0,1,2)
 
         self.reconstruct_widgets = []
 
         self.reconstruct_widget0 = qtw.QSpinBox()
         self.reconstruct_widget0.setMinimum(0)
         self.reconstruct_widget0.setMaximum(9999)
-        self.plot_layout.addWidget(self.reconstruct_widget0, 5,0)
+        self.recon_plot_layout.addWidget(self.reconstruct_widget0, 5,0)
         self.reconstruct_widget0.setToolTip("If any are '0', will reconstruct uniform distribution of scans")
         self.reconstruct_widgets.append(self.reconstruct_widget0)
 
         self.reconstruct_widget1 = qtw.QSpinBox()
         self.reconstruct_widget1.setMinimum(0)
         self.reconstruct_widget1.setMaximum(9999)
-        self.plot_layout.addWidget(self.reconstruct_widget1, 5,1)
+        self.recon_plot_layout.addWidget(self.reconstruct_widget1, 5,1)
         self.reconstruct_widgets.append(self.reconstruct_widget1)
         
         self.reconstruct_widget2 = qtw.QSpinBox()
         self.reconstruct_widget2.setMinimum(0)
         self.reconstruct_widget2.setMaximum(9999)
-        self.plot_layout.addWidget(self.reconstruct_widget2, 6,0)
+        self.recon_plot_layout.addWidget(self.reconstruct_widget2, 6,0)
         self.reconstruct_widgets.append(self.reconstruct_widget2)
 
         self.reconstruct_widget3 = qtw.QSpinBox()
         self.reconstruct_widget3.setMinimum(0)
         self.reconstruct_widget3.setMaximum(9999)
-        self.plot_layout.addWidget(self.reconstruct_widget3, 6,1)
+        self.recon_plot_layout.addWidget(self.reconstruct_widget3, 6,1)
         self.reconstruct_widgets.append(self.reconstruct_widget3)
 
         self.reconstruct_widget4 = qtw.QSpinBox()
         self.reconstruct_widget4.setMinimum(0)
         self.reconstruct_widget4.setMaximum(9999)
-        self.plot_layout.addWidget(self.reconstruct_widget4, 7,0)
+        self.recon_plot_layout.addWidget(self.reconstruct_widget4, 7,0)
         self.reconstruct_widgets.append(self.reconstruct_widget4)
 
         self.reconstruct_widget5 = qtw.QSpinBox()
         self.reconstruct_widget5.setMinimum(0)
         self.reconstruct_widget5.setMaximum(9999)
-        self.plot_layout.addWidget(self.reconstruct_widget5, 7,1)
+        self.recon_plot_layout.addWidget(self.reconstruct_widget5, 7,1)
         self.reconstruct_widgets.append(self.reconstruct_widget5)
 
         self.reconstruct_widget6 = qtw.QSpinBox()
         self.reconstruct_widget6.setMinimum(0)
         self.reconstruct_widget6.setMaximum(9999)
-        self.plot_layout.addWidget(self.reconstruct_widget6, 8,0)
+        self.recon_plot_layout.addWidget(self.reconstruct_widget6, 8,0)
         self.reconstruct_widgets.append(self.reconstruct_widget6)
 
         self.reconstruct_widget7 = qtw.QSpinBox()
         self.reconstruct_widget7.setMinimum(0)
         self.reconstruct_widget7.setMaximum(9999)
-        self.plot_layout.addWidget(self.reconstruct_widget7, 8,1)
+        self.recon_plot_layout.addWidget(self.reconstruct_widget7, 8,1)
         self.reconstruct_widgets.append(self.reconstruct_widget7)
 
         self.reconstruct_widget8 = qtw.QSpinBox()
         self.reconstruct_widget8.setMinimum(0)
         self.reconstruct_widget8.setMaximum(9999)
-        self.plot_layout.addWidget(self.reconstruct_widget8, 9,0)
+        self.recon_plot_layout.addWidget(self.reconstruct_widget8, 9,0)
         self.reconstruct_widgets.append(self.reconstruct_widget8)
 
         self.reconstruct_widget9 = qtw.QSpinBox()
         self.reconstruct_widget9.setMinimum(0)
         self.reconstruct_widget9.setMaximum(9999)
-        self.plot_layout.addWidget(self.reconstruct_widget9, 9,1)
+        self.recon_plot_layout.addWidget(self.reconstruct_widget9, 9,1)
         self.reconstruct_widgets.append(self.reconstruct_widget9)
 
         ################################
@@ -1048,19 +1055,23 @@ class MainWindow(qtw.QMainWindow):
 
         fig = plt.figure()
         cmap = plt.get_cmap('inferno')
-        colors = cmap(np.linspace(0.9, 0, len(intensities)))
-        lift_scale = np.max(intensities) / (15*len(intensities))
+        colors = cmap(np.linspace(0.8, 0, len(intensities)))
+        stagger_factor = np.max(intensities) / (15*len(intensities))
+        stagger_max = 0
 
         for i in range(len(intensities)-1, -1, -1):
-            plt.plot(angles[i], intensities[i]+i*lift_scale, color=colors[i])
+            yaxis = intensities[i]+i*stagger_factor
+            plt.plot(angles[i], yaxis, color=colors[i])
+            if np.max(yaxis)>stagger_max:
+                stagger_max = np.max(yaxis)
         plt.xlabel(xlabel)
         plt.ylabel("Intensity (staggered) [A.U.]")
-        plt.xlim(np.min(angles), np.max(angles))
-        axis_padding = np.max(intensities) + (len(intensities)-1)*lift_scale
+        plt.xlim(max(self.plot_xmin_DSpinBox.value(), min(angles[i])),
+                 min((self.plot_xmax_DSpinBox.value(), max(angles[i]))))
         if self.inputformatGroup.checkedButton().text()=="r [Å]":
-            plt.ylim(np.min(intensities)*1.02, axis_padding*1.02)
+            plt.ylim(np.min(intensities)*1.005, stagger_max*1.005)
         else:
-            plt.ylim(np.min(intensities) - axis_padding*0.005, axis_padding*1.02)
+            plt.ylim(np.min(intensities), stagger_max*1.005)
         plt.ticklabel_format(axis="y", style="sci", scilimits=[0,0])
 
         # Maximize window
@@ -1090,6 +1101,11 @@ class MainWindow(qtw.QMainWindow):
             if self.angles.all()==None or self.intensities.all()==None:
                 self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
 
+        xmin_index = np.searchsorted(self.angles[0], self.plot_xmin_DSpinBox.value())
+        xmax_index = np.searchsorted(self.angles[0], self.plot_xmax_DSpinBox.value())
+        self.angles = self.angles[:,xmin_index:xmax_index]
+        self.intensities = self.intensities[:,xmin_index:xmax_index]
+
         errors = None
         lift_factor = None
         stretch = None
@@ -1111,7 +1127,8 @@ class MainWindow(qtw.QMainWindow):
                                                                            max_iter=self.NMFmax_iterSpinbox.value(),
                                                                            alpha_W=self.NMFalpha_WDSpinbox.value(),
                                                                            alpha_H='same' if self.NMFalpha_HsameCheckbox.isChecked() else self.NMFalpha_HDSpinbox.value(),
-                                                                           l1_ratio=self.NMFl1_ratioDSpinbox.value())
+                                                                           l1_ratio=self.NMFl1_ratioDSpinbox.value(),
+                                                                           calc_err=self.calc_err_CheckBox.isChecked())
             case "ICA":
                 fitted, transformed, reconstructed = ICA_analysis(self.intensities, numComponents,
                                                                   algorithm=self.ICAalgorithmDropdown.currentText(),
@@ -1128,20 +1145,15 @@ class MainWindow(qtw.QMainWindow):
                                                                             rho=self.SNMFrho_SciSpinbox.value(),
                                                                             eta=self.SNMFeta_DSpinbox.value())
 
-        print("Analysis completed")
+        print("Analysis completed\n")
         self.plot_analysis(numComponents, fitted, transformed, reconstructed, errors, lift_factor, stretch)
 
     def plot_analysis(self, numComponents, fitted, transformed, reconstructed, errors=None, lift_factor=None, stretch=None):
-        if numComponents < 3:
-            plotwidth = 3
-        else:
-            plotwidth = numComponents
-
         if self.convert2QCheckbox.isChecked():
             xlabel = "Q [Å⁻¹]"
             angles = theta_to_Q(self.angles, self.wavelengthWidget.value())
         else:
-            anglse = self.angles
+            angles = self.angles
             xlabel = self.inputformatGroup.checkedButton().text()
 
         reconNum = []
@@ -1157,62 +1169,87 @@ class MainWindow(qtw.QMainWindow):
             reconNum.append(len(reconstructed)-1)  # By using numComponents-1 and appending the end-point we get first and last scan
 
         cmap = plt.get_cmap('inferno')
-        colors = cmap(np.linspace(0, 0.9, numComponents))
+        colors = cmap(np.linspace(0, 0.8, numComponents))
 
-        fig, axs = plt.subplots(3, plotwidth, layout="constrained", )#, gridspec_kw = {"hspace":0.1})
+        #fig, axs = plt.subplots(3, numComponents, layout="constrained", )#, gridspec_kw = {"hspace":0.1})
+
+        fig = plt.figure()
+        gs = fig.add_gridspec(3, numComponents)
+        if (numComponents % 2) == 0:
+            ax_scores = fig.add_subplot(gs[2,0:(numComponents // 2)])
+            ax_errors = fig.add_subplot(gs[2,(numComponents // 2):])
+        else:
+            ax_scores = fig.add_subplot(gs[2,0:(numComponents // 2)+1])
+            ax_errors = fig.add_subplot(gs[2,(numComponents // 2)+1:])
+
+        """
+        ax_ylabel = fig.add_subplot(gs[0:2,:])
+        ax_ylabel.set_frame_on(False)
+        ax_ylabel.tick_params(axis='both', which='both', bottom=False, left=False, labelbottom=False, labelleft=False)
+        ax_ylabel.set_ylabel("Intensity [A.U.]", labelpad=40, fontsize='large')
+        """
+
         for i in range(numComponents):
-            axs[0][i].plot(angles[i], fitted.components_[i], "k")
-            axs[0][i].set_title(f"Component {i+1}")
-            axs[0][i].set_xlabel(xlabel)
-            #axs[0][i].set_ylabel("Intensity [A.U.]")
-            axs[0][i].set_xlim(self.plot_xmin_DSpinBox.value(), min((self.plot_xmax_DSpinBox.value(), max(angles[i]))))
-            axs[0][i].set_ylim(min(fitted.components_[i])-max(fitted.components_[i])*0.025, max(fitted.components_[i])*1.025)
+            ax_comp = fig.add_subplot(gs[0, i])
+            ax_recon = fig.add_subplot(gs[1, i])
+            ax_comp.plot(angles[i], fitted.components_[i], "k")
+            ax_comp.set_title(f"Component {i+1}")
+            ax_comp.set_xlabel(xlabel)
+            ax_comp.set_xlim(np.min(angles[i]), np.max(angles[i]))
+            ax_comp.set_ylim(min(fitted.components_[i]) - max(fitted.components_[i])*0.05, max(fitted.components_[i])*1.05)
 
-            axs[1][i].plot(angles[reconNum[i]], reconstructed[reconNum[i]], color="#DD0000", label="Reconstructed")
-            axs[1][i].plot(angles[reconNum[i]], self.intensities[reconNum[i]], "k:", label="Original")
-            axs[1][i].plot(angles[reconNum[i]], self.intensities[reconNum[i]]-reconstructed[reconNum[i]], color="#2EC483", label="Difference")
-            axs[1][i].ticklabel_format(axis="y", style="sci", scilimits=[0,0])
-            axs[1][i].set_title(f"Scan {reconNum[i]+1}") # Reconstruction num
-            axs[1][i].set_xlabel(xlabel)
-            #axs[1][i].set_ylabel("Intensity [A.U.]")
-            axs[1][i].sharex(axs[0][i])
-            #axs[1][i].set_xlim(self.plot_xmin_DSpinBox.value(), min((self.plot_xmax_DSpinBox.value(), max(angles[i]))))
-            axs[1][i].set_ylim(min(self.intensities[reconNum[i]])-max(self.intensities[reconNum[i]])*0.025, max(self.intensities[reconNum[i]])*1.025)
+            difference = self.intensities[reconNum[i]]-reconstructed[reconNum[i]]
+            distance = np.abs(min(np.min(reconstructed[reconNum[i]]),np.min(self.intensities[reconNum[i]]))-np.max(difference))
+ 
+            ax_recon.plot(angles[reconNum[i]], reconstructed[reconNum[i]], color="#DD0000", label="Reconstructed")
+            ax_recon.plot(angles[reconNum[i]], self.intensities[reconNum[i]], "k:", label="Original")
+            ax_recon.plot(angles[reconNum[i]], difference-distance*1.05, color="#2EC483", label="Difference")
+            ax_recon.ticklabel_format(axis="y", style="sci", scilimits=[0,0])
+            ax_recon.set_title(f"Scan {reconNum[i]+1}") # Reconstruction num
+            ax_recon.set_xlabel(xlabel)
+            ax_recon.sharex(ax_comp)
+            ax_recon.set_ylim((np.min(difference)-distance)*1.05 - max(np.max(self.intensities[reconNum[i]]),np.max(reconstructed[reconNum[i]]))*0.05,
+                              max(np.max(self.intensities[reconNum[i]]),np.max(reconstructed[reconNum[i]]))*1.05)
 
-            axs[2][0].plot(np.arange(1,len(angles)+1), transformed[:,i], color=colors[i], label=f"Comp. {i+1}")
-        
-        for i in range(numComponents-1):
-            axs[0][i].sharex(axs[0][i+1])
+            ax_scores.plot(np.arange(1,len(angles)+1), transformed[:,i], color=colors[i], label=f"Comp. {i+1}")
 
-        axs[1][numComponents-1].legend()
+            if i==0:
+                ax_comp_master = ax_comp
+            else:
+                ax_comp.sharex(ax_comp_master)
 
         for i in range(len(reconNum)):
-            axs[2][0].axvline(reconNum[i]+1, color="k", linestyle=":", label="Recons" if i==0 else '')
-        axs[2][0].ticklabel_format(axis="y", style="sci", scilimits=[0,0])
-        l, h = axs[2][0].get_legend_handles_labels()
-        axs[2][1].legend(l, h, title="Scores legend", frameon=True)
-        axs[2][0].set_title("Scores")
-        axs[2][0].set_xlabel("Scan #")
-        axs[2][0].set_xlim(0, len(angles)+1)
-        axs[2][0].set_ylim(min(0,np.min(transformed)), np.max(transformed))
+            ax_scores.axvline(reconNum[i]+1, color="k", linestyle=":", label="Recons" if i==0 else '')
+        ax_scores.ticklabel_format(axis="y", style="sci", scilimits=[0,0])
+        ax_scores.legend()
+        l, h = ax_recon.get_legend_handles_labels()
+        ax_errors.legend(l, h, title="↑", frameon=True)
+        ax_scores.set_title("Scores")
+        ax_scores.set_xlabel("Scan #")
+        ax_scores.set_xlim(1, len(angles))
+        ax_scores.set_ylim(min(0,np.min(transformed)), np.max(transformed))
 
         match self.algorithmGroup.checkedButton().text():
             case "PCA":
-                axs[2][1].plot(np.arange(1, min(10,min(np.shape(self.intensities)))+1), fitted.explained_variance_ratio_*100, "ko--")
-                axs[2][1].set_title("Explained variances")
+                ax_errors.plot(np.arange(1, min(10,min(np.shape(self.intensities)))+1), fitted.explained_variance_ratio_*100, "ko--")
+                ax_errors.set_title("Explained variances")
             case "NMF":
-                axs[2][1].plot(np.arange(1, min(10,min(np.shape(self.intensities)))+1), errors, "ko--")
-                axs[2][1].set_title("Reconstruction error")
+                if errors is not None:
+                    ax_errors.plot(np.arange(1, min(10,min(np.shape(self.intensities)))+1), errors, "ko--")
+                    ax_errors.set_title("Reconstruction error")
+            case "ICA":
+                print(f"ICA does not return a numerical indication for goodness of fit")
             case "SNMF":
-                NotImplemented
+                print(f"SNMF reconstruction error calculation is disabled due to slow convergence")
                 """
-                axs[2][1].plot(np.arange(1, min(10,min(np.shape(intensities)))+1), errors, "ko--")
-                axs[2][1].set_title("Reconstruction error (Not Implemented)")
-                axs[2][2].plot(np.arange(1, min(10,min(np.shape(intensities)))+1, stretch, "ko--"))
+                ax_errors.plot(np.arange(1, min(10,min(np.shape(self.intensities)))+1), errors, "ko--")
+                ax_errors.set_title("Reconstruction error (Not Implemented)")
+                axs[2][2].plot(np.arange(1, min(10,min(np.shape(self.intensities)))+1, stretch, "ko--"))
                 axs[2][2].set_title("Stretching")
                 """
+        ax_errors.set_xlim(0.9, 10.1)
 
-        axs[2][1].set_xlabel("# of Components")
+        ax_errors.set_xlabel("# of Components")
 
         fig.canvas.manager.set_window_title(f"{numComponents} component {self.algorithmGroup.checkedButton().text()} on {self.indirLabel.text().split('/')[-1]}")
 
@@ -1231,10 +1268,12 @@ class MainWindow(qtw.QMainWindow):
         if self.export_results_checkbox.isChecked():
             print("Exporting results")
             self.export_results(fitted, transformed, reconstructed, fig, errors, lift_factor, stretch)
+        return None
 
     def write_summary(self, results_path, errors=None, lift_factor=None):
         with open(f"{results_path}/summary.txt", "w") as outfile:
             outfile.write(f"Summary of {self.numComponentsSlider.value()} component {self.algorithmGroup.checkedButton().text()} analysis of data in \"...{self.indirLabel.text()[-51:]}\"\n\n")
+            outfile.write(f"Data was analyzed from {self.plot_xmin_DSpinBox.value()} to {self.plot_xmax_DSpinBox.value()} {self.inputformatGroup.checkedButton().text()}")
             outfile.write("The following algorithm parameters where used:\n")
             match self.algorithmGroup.checkedButton().text():
                 case "PCA":
@@ -1255,7 +1294,7 @@ class MainWindow(qtw.QMainWindow):
                     outfile.write(f"Regularization constant for features: {self.NMFalpha_WDSpinbox.value()}\n")
                     outfile.write(f"Regularization constant for samples: {self.NMFalpha_HDSpinbox.value()}\n") # Should work even if alpha_Hsame=True
                     outfile.write(f"Regularization mixing parameter (0=l2, 1=l1): {self.NMFl1_ratioDSpinbox.value()}\n")
-                    outfile.write(f"\nThe NMF reconstruction error for {self.numComponentsSlider.value()} components was: {errors[self.numComponentsSlider.value()+1]:.2f}\n")
+                    if errors is not None: outfile.write(f"\nThe NMF reconstruction error for {self.numComponentsSlider.value()} components was: {errors[self.numComponentsSlider.value()+1]:.2f}\n")
                     if lift_factor<0: outfile.write(f"Due to negative values, your dataset was lifted by {lift_factor} during analysis, before subsequent lowering\n")
                 case "ICA":
                     outfile.write(f"Algorithm: {self.ICAalgorithmDropdown.currentText()}\n")
@@ -1271,6 +1310,7 @@ class MainWindow(qtw.QMainWindow):
                     outfile.write(f"Stretching factor: {self.SNMFrho_SciSpinbox.value()}\n")
                     outfile.write(f"Sparsity factor: {self.SNMFeta_DSpinbox.value()}\n")
         print("Summary written")
+        return None
 
     def write_components(self, results_path, fitted):
         os.mkdir(f"{results_path}/components")
@@ -1279,6 +1319,7 @@ class MainWindow(qtw.QMainWindow):
                 for j in range(len(self.angles[i])):
                     outfile.write(f"{self.angles[i][j]}\t{component[j]}\n")
         print("Components written")
+        return None
 
     def write_scores(self, results_path, transformed):
         with open(f"{results_path}/scores.csv", "w") as outfile:
@@ -1291,6 +1332,7 @@ class MainWindow(qtw.QMainWindow):
                     outfile.write(f"{transformed[i][j]},")
                 outfile.write(f"{transformed[i][len(transformed[0])-1]}\n")
         print("Scores written")
+        return None
 
     def write_reconstructions(self, results_path, reconstructed):
         os.mkdir(f"{results_path}/reconstructions")
@@ -1304,6 +1346,7 @@ class MainWindow(qtw.QMainWindow):
                 for j in range(len(self.angles[i])):
                     outfile.write(f"{self.angles[i][j]}\t{self.intensities[i][j]-reconstructed[i][j]}\n")
         print("Differences written")
+        return None
 
     def write_stretch(self, results_path, stretch):
         NotImplemented
@@ -1323,7 +1366,8 @@ class MainWindow(qtw.QMainWindow):
         self.write_reconstructions(results_path, reconstructed)
         if self.algorithmGroup.checkedButton().text()=="SNMF":
             self.write_stretch(results_path, stretch)
-        print("Exporting results completed")
+        print("Exporting results completed\n")
+        return None
 
 class AboutDialog(qtw.QDialog):
     def __init__(self, parent=None):
@@ -1371,7 +1415,7 @@ class AboutDialog(qtw.QDialog):
         self.setFixedSize(qtc.QSize(300, 400))
 
 def main():
-    print("Starting BaSSET...")
+    print("Starting BaSSET...\n")
     app = qtw.QApplication(sys.argv)
 
     window = MainWindow()
