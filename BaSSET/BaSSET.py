@@ -45,6 +45,7 @@ plt.rcParams.update({
     "savefig.pad_inches": 0 # padding to be used, when bbox is set to 'tight'
 })
 
+
 def import_data(filename):
     """
     Takes in a filename (str) to find continous two-column datasets, returning each column as a numpy array
@@ -186,6 +187,7 @@ def SNMF_analysis(intensities, numComponents, min_iter, max_iter, tol, rho, eta,
 
     return X, transformed, reconstructed, errors, stretch
 
+
 class SciSpinBox(qtw.QDoubleSpinBox):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -227,23 +229,8 @@ class MainWindow(qtw.QMainWindow):
         ##############################
         ##### Input data widgets #####
         ##############################
-        self.indir_layout = qtw.QHBoxLayout()
-        self.grid.addLayout(self.indir_layout, 0,0,1,3)
-
-        self.indirLabel = qtw.QLabel("Select the folder containing your data files")
-        self.indir_layout.addWidget(self.indirLabel)
-        self.indirLabel.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
-        self.indirLabel.setMinimumWidth(350)
-        self.indirLabel.setSizePolicy(qtw.QSizePolicy.Policy.Preferred, qtw.QSizePolicy.Policy.Fixed)
-        self.indirLabel.setFrameShape(qtw.QFrame.Shape.Panel)
-        self.indirLabel.setFrameShadow(qtw.QFrame.Shadow.Sunken)
-
-        self.indirButton = qtw.QPushButton("File directory")
-        self.indirButton.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
-        self.indir_layout.addWidget(self.indirButton)
-
         self.input_format_layout = qtw.QGridLayout()
-        self.grid.addLayout(self.input_format_layout, 1,0)
+        self.grid.addLayout(self.input_format_layout, 0,0,2,1)
 
         self.inputformatTitle = qtw.QLabel("Input format")
         self.inputformatTitle.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
@@ -282,23 +269,90 @@ class MainWindow(qtw.QMainWindow):
         self.wavelengthWidget.setSingleStep(0.000001)
         self.wavelengthWidget.setSuffix(' Å')
         self.wavelengthWidget.setValue(1.540598)
+        self.wavelengthWidget.setButtonSymbols(qtw.QAbstractSpinBox.ButtonSymbols.NoButtons)
         self.indir_options_layout.addWidget(self.wavelengthWidget)
         self.inputformatGroup.buttonClicked.connect(
             lambda button: self.wavelengthWidget.setEnabled(True)
             if button==self.thetaButton
             else self.wavelengthWidget.setDisabled(True)
         )
+        self.inputformatGroup.buttonClicked.connect(
+            lambda button: self.convert2QCheckbox.setChecked(False)
+            if button!=self.thetaButton
+            else None
+        )
+
+        self.indir_layout = qtw.QHBoxLayout()
+        self.grid.addLayout(self.indir_layout, 0,1,1,2)
+
+        self.indirLabel = qtw.QLabel("Select the folder containing your dataset")
+        self.indirLabel.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
+        self.indirLabel.setMinimumWidth(350)
+        self.indirLabel.setSizePolicy(qtw.QSizePolicy.Policy.Preferred, qtw.QSizePolicy.Policy.Fixed)
+        self.indirLabel.setFrameShape(qtw.QFrame.Shape.Panel)
+        self.indirLabel.setFrameShadow(qtw.QFrame.Shadow.Sunken)
+        self.indir_layout.addWidget(self.indirLabel)
+
+        self.indirButton = qtw.QPushButton("Load dataset")
+        self.indirButton.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
+        self.indir_layout.addWidget(self.indirButton)
+
+        self.bkg_layout = qtw.QHBoxLayout()
+        self.bkg_layout.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
+        self.grid.addLayout(self.bkg_layout, 1,1,1,2)
+        
+        self.bkgLabel = qtw.QLabel("Select a background file to subtract from your dataset")
+        self.bkgLabel.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
+        self.bkgLabel.setMinimumWidth(350)
+        self.bkgLabel.setSizePolicy(qtw.QSizePolicy.Policy.Preferred, qtw.QSizePolicy.Policy.Fixed)
+        self.bkgLabel.setFrameShape(qtw.QFrame.Shape.Panel)
+        self.bkgLabel.setFrameShadow(qtw.QFrame.Shadow.Sunken)
+        self.bkg_layout.addWidget(self.bkgLabel)
+
+        self.getbkgButton = qtw.QPushButton("Load")
+        self.getbkgButton.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
+        self.bkg_layout.addWidget(self.getbkgButton)
+
+        self.rmbkgButton = qtw.QPushButton("Remove background")
+        self.rmbkgButton.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
+        self.bkg_layout.addWidget(self.rmbkgButton)
 
         self.plotDataButton = qtw.QPushButton("Plot input dataset")
         self.plotDataButton.setSizePolicy(qtw.QSizePolicy.Policy.MinimumExpanding, qtw.QSizePolicy.Policy.Ignored)
-        self.grid.addWidget(self.plotDataButton, 2, 0)
+        self.grid.addWidget(self.plotDataButton, 2,0)
+
+        self.xrange_layout = qtw.QGridLayout()
+        self.grid.addLayout(self.xrange_layout, 3,0)
+
+        self.plot_xrange_label = qtw.QLabel("X-axis range")
+        self.plot_xrange_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
+        self.plot_xrange_label.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
+        self.xrange_layout.addWidget(self.plot_xrange_label, 2,0,1,2)
+
+        self.plot_xmin_DSpinBox = qtw.QDoubleSpinBox()
+        self.plot_xmin_DSpinBox.setMinimum(0)
+        self.plot_xmin_DSpinBox.setMaximum(999)
+        self.plot_xmin_DSpinBox.setValue(0)
+        self.plot_xmin_DSpinBox.setDecimals(2)
+        self.plot_xmin_DSpinBox.setSingleStep(0.01)
+        self.xrange_layout.addWidget(self.plot_xmin_DSpinBox, 3,0)
+        self.plot_xmin_DSpinBox.setToolTip("Minimum x-value in plots")
+
+        self.plot_xmax_DSpinBox = qtw.QDoubleSpinBox()
+        self.plot_xmax_DSpinBox.setMinimum(0)
+        self.plot_xmax_DSpinBox.setMaximum(999)
+        self.plot_xmax_DSpinBox.setValue(30)
+        self.plot_xmax_DSpinBox.setDecimals(2)
+        self.plot_xmax_DSpinBox.setSingleStep(0.01)
+        self.xrange_layout.addWidget(self.plot_xmax_DSpinBox, 3,1)
+        self.plot_xmax_DSpinBox.setToolTip("Maximum x-value in plots")
 
         #############################
         ##### Algorithm widgets #####
         #############################
 
         self.algorithm_layout = qtw.QGridLayout()
-        self.grid.addLayout(self.algorithm_layout, 1,1)
+        self.grid.addLayout(self.algorithm_layout, 2,1)
 
         self.algorithmGroup = qtw.QButtonGroup()
         self.algorithmTitle = qtw.QLabel("Algorithm")
@@ -325,13 +379,18 @@ class MainWindow(qtw.QMainWindow):
                                    "Error calculation will not be performed.")
         self.algorithm_layout.addWidget(self.SNMFButton, 2,0)
 
+        self.calc_err_CheckBox = qtw.QCheckBox("Calculate errors")
+        self.calc_err_CheckBox.setChecked(True)
+        self.calc_err_CheckBox.setToolTip("Calculates errors for 1 to 10 components")
+        self.algorithm_layout.addWidget(self.calc_err_CheckBox, 2,1)
+
         self.algorithmGroup.addButton(self.PCAButton)
         self.algorithmGroup.addButton(self.NMFButton)
         self.algorithmGroup.addButton(self.ICAButton)
         self.algorithmGroup.addButton(self.SNMFButton)
 
         self.num_components_layout = qtw.QGridLayout()
-        self.grid.addLayout(self.num_components_layout, 2,1)
+        self.grid.addLayout(self.num_components_layout, 3,1)
 
         self.numComponentsTitle = qtw.QLabel("Number of Components")
         self.numComponentsTitle.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
@@ -358,7 +417,7 @@ class MainWindow(qtw.QMainWindow):
 
 
         self.algorithm_parameters_layout = qtw.QGridLayout()
-        self.grid.addLayout(self.algorithm_parameters_layout, 3,1)
+        self.grid.addLayout(self.algorithm_parameters_layout, 4,1)
 
         self.algorithmParametersTitle = qtw.QLabel("Algorithm Parameters")
         self.algorithmParametersTitle.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
@@ -715,51 +774,32 @@ class MainWindow(qtw.QMainWindow):
         ##### Analysis and plot widgets #####
         #####################################
 
-        self.results_layout = qtw.QGridLayout()
-        self.grid.addLayout(self.results_layout, 1,2)
-
         self.runAnalysisButton = qtw.QPushButton("Run analysis")
-        self.runAnalysisButton.setSizePolicy(qtw.QSizePolicy.Policy.MinimumExpanding, qtw.QSizePolicy.Policy.MinimumExpanding)
-        self.results_layout.addWidget(self.runAnalysisButton, 0,0,2,2)
+        self.runAnalysisButton.setSizePolicy(qtw.QSizePolicy.Policy.MinimumExpanding, qtw.QSizePolicy.Policy.Preferred)
+        self.grid.addWidget(self.runAnalysisButton, 2,2)
 
-        self.calc_err_CheckBox = qtw.QCheckBox("Calculate errors")
-        self.calc_err_CheckBox.setChecked(True)
-        self.calc_err_CheckBox.setToolTip("Calculates errors for 1 to 10 components")
-        self.results_layout.addWidget(self.calc_err_CheckBox, 2,0)
+        self.results_layout = qtw.QGridLayout()
+        self.grid.addLayout(self.results_layout, 3,2)
 
-        self.export_results_checkbox = qtw.QCheckBox("Export results")
-        self.export_results_checkbox.setToolTip("Exports plot of dataset, and analysis plot and results\n" \
+        self.export_results_CheckBox = qtw.QCheckBox("Export results")
+        self.export_results_CheckBox.setToolTip("Exports plot of dataset, and analysis plot and results\n" \
         "For the sake of analysis in other programs data is exported in input format (2θ not converted to Q)")
-        self.results_layout.addWidget(self.export_results_checkbox, 2,1)
+        self.results_layout.addWidget(self.export_results_CheckBox, 0,0)
 
-        self.xrange_layout = qtw.QGridLayout()
-        self.grid.addLayout(self.xrange_layout, 2,2)
+        self.export_compContribute_CheckBox = qtw.QCheckBox("Export component contributions")
+        self.export_compContribute_CheckBox.setToolTip("Exports the partial component-wise reconstruction\n" \
+                                                       "Each component multiplied by its own scoring, for each scan")
+        self.export_compContribute_CheckBox.setDisabled(True)
+        self.results_layout.addWidget(self.export_compContribute_CheckBox, 0,1)
+        self.export_results_CheckBox.clicked.connect(
+            lambda state: self.export_compContribute_CheckBox.setDisabled(False)
+            if state
+            else self.export_compContribute_CheckBox.setDisabled(True)
+        )
 
-        self.plot_xrange_label = qtw.QLabel("X-axis range")
-        self.plot_xrange_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
-        self.plot_xrange_label.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
-        self.xrange_layout.addWidget(self.plot_xrange_label, 2,0,1,2)
-
-        self.plot_xmin_DSpinBox = qtw.QDoubleSpinBox()
-        self.plot_xmin_DSpinBox.setMinimum(0)
-        self.plot_xmin_DSpinBox.setMaximum(999)
-        self.plot_xmin_DSpinBox.setValue(0)
-        self.plot_xmin_DSpinBox.setDecimals(2)
-        self.plot_xmin_DSpinBox.setSingleStep(0.01)
-        self.xrange_layout.addWidget(self.plot_xmin_DSpinBox, 3,0)
-        self.plot_xmin_DSpinBox.setToolTip("Minimum x-value in plots")
-
-        self.plot_xmax_DSpinBox = qtw.QDoubleSpinBox()
-        self.plot_xmax_DSpinBox.setMinimum(0)
-        self.plot_xmax_DSpinBox.setMaximum(999)
-        self.plot_xmax_DSpinBox.setValue(30)
-        self.plot_xmax_DSpinBox.setDecimals(2)
-        self.plot_xmax_DSpinBox.setSingleStep(0.01)
-        self.xrange_layout.addWidget(self.plot_xmax_DSpinBox, 3,1)
-        self.plot_xmax_DSpinBox.setToolTip("Maximum x-value in plots")
 
         self.recon_plot_layout = qtw.QGridLayout()
-        self.grid.addLayout(self.recon_plot_layout, 3,2)
+        self.grid.addLayout(self.recon_plot_layout, 4,2)
         self.recon_plot_layout.setAlignment(qtc.Qt.AlignmentFlag.AlignTop)
 
         self.reconstruct_label = qtw.QLabel("Display Reconstruction Scan #")
@@ -834,6 +874,10 @@ class MainWindow(qtw.QMainWindow):
         ##### Function connections #####
         ################################
         self.indirButton.clicked.connect(self.set_indir)
+        self.indirButton.clicked.connect(self.update_config_file)
+        self.getbkgButton.clicked.connect(self.set_bkgfile)
+        self.getbkgButton.clicked.connect(self.update_config_file)
+        self.rmbkgButton.clicked.connect(lambda: self.bkgLabel.setText("Select a background file to subtract from your dataset"))
         self.indirButton.clicked.connect(self.update_config_file)
         self.inputformatGroup.buttonClicked.connect(self.update_config_file)
         self.convert2QCheckbox.clicked.connect(self.update_config_file)
@@ -932,6 +976,19 @@ class MainWindow(qtw.QMainWindow):
         self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
         self.plot_xmin_DSpinBox.setValue(np.min(self.angles))
         self.plot_xmax_DSpinBox.setValue(np.max(self.angles))
+
+        return None
+    
+    def set_bkgfile(self):
+        infile,_ = qtw.QFileDialog.getOpenFileName(self)
+        if infile=="": # If the operation was cancelled
+            return None
+        self.bkgLabel.setText(infile)
+        #try:
+        import_data(infile)
+        #except:
+        #    print(f"An error occured when loading {infile.split("/")[-1]}")
+        #    self.bkgLabel.setText("Select a background file to subtract from your dataset")
 
         return None
 
@@ -1038,7 +1095,7 @@ class MainWindow(qtw.QMainWindow):
             outfile.write(f"Number of components: {self.numComponentsSlider.value()}\n")
 
     def plot_dataset(self):
-        print("Plotting input dataset")
+        print("Plotting input dataset\n")
         try:
             if self.angles==None or self.intensities==None:
               self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
@@ -1085,7 +1142,7 @@ class MainWindow(qtw.QMainWindow):
                 manager.full_screen_toggle() # Fallback for some backends
 
         fig.show()
-        if self.export_results_checkbox.isChecked():
+        if self.export_results_CheckBox.isChecked():
             if not os.path.exists(f"{self.indirLabel.text()}/BaSSET_results"):
                 os.mkdir(f"{self.indirLabel.text()}/BaSSET_results")
             fig.savefig(f"{self.indirLabel.text()}/BaSSET_results/input_dataset.png")
@@ -1100,6 +1157,20 @@ class MainWindow(qtw.QMainWindow):
         except ValueError: # If initialized as array with more than one elements, the truth value is ambiguous
             if self.angles.all()==None or self.intensities.all()==None:
                 self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
+
+        if self.bkgLabel.text() != "Select a background file to subtract from your dataset":
+            try:
+                _, bkgintensity = import_data(self.bkgLabel.text())
+            except:
+                print("! Could not read background file. Running without subtraction")
+                return None
+            try:
+
+                for i, intensity in enumerate(self.intensities):
+                    self.intensities[i] = intensity - bkgintensity
+            except:
+                print("! Could not subtract background from data. Running without subtraction")
+                return None
 
         xmin_index = np.searchsorted(self.angles[0], self.plot_xmin_DSpinBox.value())
         xmax_index = np.searchsorted(self.angles[0], self.plot_xmax_DSpinBox.value())
@@ -1265,13 +1336,13 @@ class MainWindow(qtw.QMainWindow):
 
         fig.show()
 
-        if self.export_results_checkbox.isChecked():
+        if self.export_results_CheckBox.isChecked():
             print("Exporting results")
             self.export_results(fitted, transformed, reconstructed, fig, errors, lift_factor, stretch)
         return None
 
     def write_summary(self, results_path, errors=None, lift_factor=None):
-        with open(f"{results_path}/summary.txt", "w") as outfile:
+        with open(f"{results_path}/summary.txt", "w", encoding='utf-8') as outfile:
             outfile.write(f"Summary of {self.numComponentsSlider.value()} component {self.algorithmGroup.checkedButton().text()} analysis of data in \"...{self.indirLabel.text()[-51:]}\"\n\n")
             outfile.write(f"Data was analyzed from {self.plot_xmin_DSpinBox.value()} to {self.plot_xmax_DSpinBox.value()} {self.inputformatGroup.checkedButton().text()}")
             outfile.write("The following algorithm parameters where used:\n")
@@ -1315,17 +1386,28 @@ class MainWindow(qtw.QMainWindow):
     def write_components(self, results_path, fitted):
         os.mkdir(f"{results_path}/components")
         for i, component in enumerate(fitted.components_):
-            with open(f"{results_path}/components/component_{i+1:0{2}}.xy", "w") as outfile:
+            with open(f"{results_path}/components/component_{i+1:02}.xy", "w") as outfile:
                 for j in range(len(self.angles[i])):
                     outfile.write(f"{self.angles[i][j]}\t{component[j]}\n")
         print("Components written")
         return None
 
+    def write_compContribute(self, results_path, fitted, transformed):
+        os.mkdir(f"{results_path}/component_contributions")
+        for compNum, component in enumerate(fitted.components_):
+            os.mkdir(f"{results_path}/component_contributions/component_{compNum+1:02}")
+            for i in range(len(transformed)): # Number of scans
+                with open(f"{results_path}/component_contributions/component_{compNum+1:02}/c{compNum+1:02}_contribution_scan_{i}.xy", "w") as outfile:
+                    for j in range(len(self.angles[compNum])): # Index in scan 
+                        outfile.write(f"{self.angles[i][j]}\t{component[j]*transformed[i][compNum]}\n") # Component multiplied by its scoring at that scan number
+        print(f"Component contributions written")
+        return None
+
     def write_scores(self, results_path, transformed):
         with open(f"{results_path}/scores.csv", "w") as outfile:
             for i in range(self.numComponentsSlider.value()-1):
-                outfile.write(f"Component {i+1:0{2}},")
-            outfile.write(f"Component {self.numComponentsSlider.value():0{2}}\n")
+                outfile.write(f"Component {i+1:02},")
+            outfile.write(f"Component {self.numComponentsSlider.value():02}\n")
 
             for i in range(len(transformed)):
                 for j in range(len(transformed[0])-1):
@@ -1337,12 +1419,12 @@ class MainWindow(qtw.QMainWindow):
     def write_reconstructions(self, results_path, reconstructed):
         os.mkdir(f"{results_path}/reconstructions")
         for i in range(len(reconstructed)):
-            with open(f"{results_path}/reconstructions/recon_scan_{i+1:0{4}}.xy", "w") as outfile:
+            with open(f"{results_path}/reconstructions/recon_scan_{i+1:04}.xy", "w") as outfile:
                 for j in range(len(self.angles[i])):
                     outfile.write(f"{self.angles[i][j]}\t{reconstructed[i][j]}\n")
         print("Reconstructions written")
         for i in range(len(reconstructed)):
-            with open(f"{results_path}/reconstructions/diff_scan_{i+1:0{4}}.xy", "w") as outfile:
+            with open(f"{results_path}/reconstructions/diff_scan_{i+1:04}.xy", "w") as outfile:
                 for j in range(len(self.angles[i])):
                     outfile.write(f"{self.angles[i][j]}\t{self.intensities[i][j]-reconstructed[i][j]}\n")
         print("Differences written")
@@ -1362,6 +1444,8 @@ class MainWindow(qtw.QMainWindow):
             fig.savefig(f"{results_path}/overview.jpg")
         self.write_summary(results_path, errors, lift_factor)
         self.write_components(results_path, fitted)
+        if self.export_compContribute_CheckBox.isChecked():
+            self.write_compContribute(results_path, fitted, transformed)
         self.write_scores(results_path, transformed)
         self.write_reconstructions(results_path, reconstructed)
         if self.algorithmGroup.checkedButton().text()=="SNMF":
@@ -1413,6 +1497,7 @@ class AboutDialog(qtw.QDialog):
         self.setLayout(layout)
 
         self.setFixedSize(qtc.QSize(300, 400))
+
 
 def main():
     print("Starting BaSSET...\n")
