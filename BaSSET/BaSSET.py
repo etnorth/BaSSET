@@ -854,57 +854,6 @@ class MainWindow(qtw.QMainWindow):
             self.about_window.close()
             self.about_window = None
 
-    def display_reconstruction_widgets(self):
-        """Displays widgets for reconstructions equaling number of components, and hides the rest"""
-        for widget in self.reconstruct_widgets[:self.numComponentsSlider.value()]:
-            widget.show()
-        for widget in self.reconstruct_widgets[self.numComponentsSlider.value():]:
-            widget.hide()
-
-    def set_indir(self, indir=None):
-        if indir is None or indir is False: # Despite initialized as None, is in reality False from "Load directory" widget
-            if self.indirLabel.text() == "Select the folder containing your data files":
-                indir = str(qtw.QFileDialog.getExistingDirectory(self))
-            else:
-                indir = str(qtw.QFileDialog.getExistingDirectory(self, directory=os.path.dirname(self.indirLabel.text())))
-            if indir == "": # If the operation was cancelled
-                return None
-        self.indirLabel.setText(indir)
-        self.add_recentdir(indir)
-
-        # Whenever a new direcotry is loaded, import data
-        self.angles, self.intensities = f.import_dataset(self.indirLabel.text() + os.path.sep)
-        self.plot_xmin_DSpinBox.setValue(np.min(self.angles))
-        self.plot_xmax_DSpinBox.setValue(np.max(self.angles))
-
-        return None
-    
-    def set_bkgfile(self):
-        infile,_ = qtw.QFileDialog.getOpenFileName(self)
-        if infile=="": # If the operation was cancelled
-            return None
-        self.bkgLabel.setText(infile)
-        try:
-            f.import_data(infile)
-        except:
-            print(f"An error occured when loading {infile.split("/")[-1]}")
-            self.bkgLabel.setText("Select a background file to subtract from your dataset")
-
-        return None
-
-    def add_recentdir(self, recentdir):
-        recentdir_button = qtg.QAction(recentdir, self)
-        recentdir_button.triggered.connect(lambda: self.set_indir(recentdir_button.text()))
-        if recentdir in (action.text() for action in self.file_submenu_recent.actions()):
-            self.file_submenu_recent.removeAction(next(action for action in self.file_submenu_recent.actions() if action.text()==recentdir))
-        elif len(self.file_submenu_recent.actions()) >= 10+2:
-            self.file_submenu_recent.removeAction(self.file_submenu_recent.actions()[-3]) # -1 is "clear", -2 is separator, so -3 should be oldest "recent"
-        elif len(self.file_submenu_recent.actions()) == 2: # To ensure first "recent" is above the separator
-            self.file_submenu_recent.insertAction(self.file_submenu_recent_separator, recentdir_button)
-            return None
-        self.file_submenu_recent.insertAction(self.file_submenu_recent.actions()[0], recentdir_button)
-        return None
-
     def display_algorithm_widgets(self):
         for widget in (self.PCAalgorithmWidgets +
                        self.NMFalgorithmWidgets +
@@ -933,6 +882,57 @@ class MainWindow(qtw.QMainWindow):
             case "SNMF":
                 for widget in self.SNMFalgorithmWidgets:
                     widget.show()
+
+    def display_reconstruction_widgets(self):
+        """Displays widgets for reconstructions equaling number of components, and hides the rest"""
+        for widget in self.reconstruct_widgets[:self.numComponentsSlider.value()]:
+            widget.show()
+        for widget in self.reconstruct_widgets[self.numComponentsSlider.value():]:
+            widget.hide()
+
+    def set_indir(self, indir=None):
+        if indir is None or indir is False: # Despite initialized as None, is in reality False from "Load directory" widget
+            if self.indirLabel.text() == "Select the folder containing your data files":
+                indir = str(qtw.QFileDialog.getExistingDirectory(self))
+            else:
+                indir = str(qtw.QFileDialog.getExistingDirectory(self, directory=os.path.dirname(self.indirLabel.text())))
+            if indir == "": # If the operation was cancelled
+                return None
+        self.indirLabel.setText(indir)
+        self.add_recentdir(indir)
+
+        # Whenever a new direcotry is loaded, import data
+        self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text() + os.path.sep)
+        self.plot_xmin_DSpinBox.setValue(np.min(self.angles))
+        self.plot_xmax_DSpinBox.setValue(np.max(self.angles))
+
+        return None
+    
+    def set_bkgfile(self):
+        infile,_ = qtw.QFileDialog.getOpenFileName(self)
+        if infile=="": # If the operation was cancelled
+            return None
+        self.bkgLabel.setText(infile)
+        try:
+            fileWorker.import_data(infile)
+        except:
+            print(f"An error occured when loading {infile.split("/")[-1]}")
+            self.bkgLabel.setText("Select a background file to subtract from your dataset")
+
+        return None
+
+    def add_recentdir(self, recentdir):
+        recentdir_button = qtg.QAction(recentdir, self)
+        recentdir_button.triggered.connect(lambda: self.set_indir(recentdir_button.text()))
+        if recentdir in (action.text() for action in self.file_submenu_recent.actions()):
+            self.file_submenu_recent.removeAction(next(action for action in self.file_submenu_recent.actions() if action.text()==recentdir))
+        elif len(self.file_submenu_recent.actions()) >= 10+2:
+            self.file_submenu_recent.removeAction(self.file_submenu_recent.actions()[-3]) # -1 is "clear", -2 is separator, so -3 should be oldest "recent"
+        elif len(self.file_submenu_recent.actions()) == 2: # To ensure first "recent" is above the separator
+            self.file_submenu_recent.insertAction(self.file_submenu_recent_separator, recentdir_button)
+            return None
+        self.file_submenu_recent.insertAction(self.file_submenu_recent.actions()[0], recentdir_button)
+        return None
 
     def read_config_file(self):
         with open(self.configfile, encoding='utf-8') as infile:
@@ -1141,7 +1141,7 @@ class MainWindow(qtw.QMainWindow):
     def plot_analysis(self, numComponents, fitted, transformed, reconstructed, errors=None, lift_factor=None, stretch=None):
         if self.convert2QCheckbox.isChecked():
             xlabel = "Q [Å⁻¹]"
-            angles = theta_to_Q(self.angles, self.wavelengthWidget.value())
+            angles = funcs.theta_to_Q(self.angles, self.wavelengthWidget.value())
         else:
             angles = self.angles
             xlabel = self.inputformatGroup.checkedButton().text()
