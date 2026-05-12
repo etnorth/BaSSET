@@ -1,4 +1,12 @@
-BaSSET/config.dat
-.venv*
-*.egg-info
+# Python
+*__pycache__
+
+# Distribution
 dist*
+*.egg-info
+
+# Environmetns
+.venv*
+
+# BaSSET Specific
+BaSSET/config.dat
