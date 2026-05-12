@@ -4,12 +4,15 @@ from glob import glob
 from datetime import datetime
 from re import search
 
+from basset.utils import (
+    analysis,
+    fileWorker,
+    funcs
+)
+
 from natsort import natsorted
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.colors import LinearSegmentedColormap
-from sklearn.decomposition import PCA, NMF, FastICA
-from diffpy.stretched_nmf.snmf_class import SNMFOptimizer
 import PyQt6.QtCore as qtc
 import PyQt6.QtWidgets as qtw
 import PyQt6.QtGui as qtg
@@ -44,148 +47,6 @@ plt.rcParams.update({
     "savefig.bbox": "tight", # {tight, standard} (tight is incompatible with animations)
     "savefig.pad_inches": 0 # padding to be used, when bbox is set to 'tight'
 })
-
-
-def import_data(filename):
-    """
-    Takes in a filename (str) to find continous two-column datasets, returning each column as a numpy array
-    """
-    try:
-        x, y = np.loadtxt(filename, unpack=True, comments='#', usecols=(0,1))
-        return x, y
-    except ValueError:
-        #print("Couldn't read file with default # comments, reading file line by line")
-        pass
-    with open(filename, "r") as infile:
-        lines = infile.readlines()
-        for i, line in enumerate(lines):
-            if not line:
-                continue
-            if search("[0-9]", line.replace(' ','')[0]): # Checks if the first non-whitespace symbol is a number
-                x, y = np.loadtxt(filename, unpack=True, skiprows=i, usecols=(0,1)) # Skips all lines above curren
-                return x, y
-        raise ValueError(f"Couldn't find data in {filename}")
-
-def import_dataset(dir):
-    """
-    Imports data from all files in chosen directory of chosen / most popular filetype
-    """
-
-    filetypes = {}
-    for file_extension in [os.path.splitext(filename)[-1] for filename in glob(f"{dir}*")]: # Gets extension of each filename in folder
-        if file_extension in filetypes:
-            filetypes[file_extension] += 1
-        else:
-            filetypes[file_extension] = 1
-    filetype = max(filetypes)
-    popular_filetypes = [key for key, value in filetypes.items() if value == filetypes[filetype]] # Checks if there are multiple equally popular file extensions
-    if len(popular_filetypes)>1:
-        print(f"Multiple equally popular filetypes found: ({popular_filetypes}). Disable 'auto' and re-run")
-        raise NotImplementedError
-    print(f"Most common filetype in supplied directory is {filetype}")
-
-    print(f"Looking for files in \"...{dir[-41:-1]}\" of type {filetype}")
-    filenames = natsorted(glob(f"{dir}*{filetype}"))
-    print(f"Found {len(filenames)} files of filetype {filetype}")
-
-    x_data = []
-    y_data = []
-
-    for filename in filenames:
-        x, y = import_data(filename)
-        x_data.append(x)
-        y_data.append(y)
-
-    print("Dataset imported\n")
-    return np.array(x_data), np.array(y_data)
-
-def theta_to_Q(angles, wavelength):
-    return ((4*np.pi) / wavelength) * np.sin(np.deg2rad(angles)/2)
-
-def normalize_dataset(intensities):
-    for i in range(len(intensities)):
-        intensities[i] = intensities[i] / intensities[i].max()
-    return intensities
-
-def PCA_analysis(intensities, numComponents, whiten, svd_solver, tol, iterated_power, n_oversamples, power_iteration_normalizer):
-    n_components = min(10,min(np.shape(intensities))) # Setting this higher than the user's number ensures reporting of explained variances
-    pca = PCA(n_components = n_components, whiten=whiten, svd_solver=svd_solver, tol=tol, iterated_power=iterated_power, n_oversamples=n_oversamples, power_iteration_normalizer=power_iteration_normalizer)
-    X = pca.fit(intensities)
-    transformed = pca.transform(intensities)
-    reconstructed = pca.inverse_transform(transformed)
-
-    return X, transformed, reconstructed
-
-def NMF_analysis(intensities, numComponents, init, solver, beta_loss, tol, max_iter, alpha_W, alpha_H, l1_ratio, calc_err):
-    lift_factor = intensities.min()
-    if lift_factor < 0:
-        intensities -= lift_factor
-        print("Negative value found in dataset. Lifting data above zero")
-
-    if calc_err:
-        n_components_list = np.arange(1, min(10,min(np.shape(intensities)))+1, dtype=int)
-        errors = np.empty(len(n_components_list))
-        for i, n_components in enumerate(n_components_list):
-            print(f"Calculating NMF reconstruction error for {n_components} components")
-            nmf = NMF(n_components=n_components, init=init, solver=solver, beta_loss=beta_loss, tol=tol, max_iter=max_iter, alpha_W=alpha_W, alpha_H=alpha_H, l1_ratio=l1_ratio)
-            X_temp = nmf.fit(intensities)
-            errors[i] = X_temp.reconstruction_err_
-            print(f"    NMF ({n_components}) reconstruction error: {X_temp.reconstruction_err_:10f}")
-            if numComponents == n_components:
-                X = X_temp
-                transformed = nmf.transform(intensities)
-                reconstructed = nmf.inverse_transform(transformed)
-    else:
-        nmf = NMF(n_components=numComponents, init=init, solver=solver, beta_loss=beta_loss, tol=tol, max_iter=max_iter, alpha_W=alpha_W, alpha_H=alpha_H, l1_ratio=l1_ratio)
-        errors = None
-        X = nmf.fit(intensities)
-        transformed = nmf.transform(intensities)
-        reconstructed = nmf.inverse_transform(transformed)
-        print(f"    NMF ({numComponents}) reconstruction error: {X.reconstruction_err_:10f}")
-
-    if lift_factor < 0: # Lower data below zero again
-        intensities += lift_factor
-        X.components_ += lift_factor
-        reconstructed += lift_factor
-
-    return X, transformed, reconstructed, errors, lift_factor
-
-def ICA_analysis(intensities, numComponents, algorithm, whiten, fun, max_iter, tol, whiten_solver):
-    ica = FastICA(n_components = numComponents, algorithm=algorithm, whiten=whiten, fun=fun, max_iter=max_iter, tol=tol, whiten_solver=whiten_solver)
-    X = ica.fit(intensities)
-    transformed = ica.transform(intensities)
-    reconstructed = ica.inverse_transform(transformed)
-
-    return X, transformed, reconstructed
-
-def SNMF_analysis(intensities, numComponents, min_iter, max_iter, tol, rho, eta, calc_err):
-    # SNMF automatically handles lifts negative values, so no if-case needed
-    calc_err=False
-
-    if calc_err:
-        n_components_list = np.arange(1, min(10,min(np.shape(intensities)))+1, dtype=int)
-        errors = np.empty(len(n_components_list))
-        for i, n_components in enumerate(n_components_list):
-            print(f"Calculating SNMF reconstruction error for {n_components} components")
-            snmf = SNMFOptimizer(n_components=n_components, min_iter=min_iter, max_iter=max_iter, tol=tol, rho=rho, eta=eta, show_plots=True)
-            X_temp = snmf.fit(intensities)
-            errors[i] = X_temp.reconstruction_err_
-            print(f"    SNMF ({n_components}) reconstruction error: {X_temp.reconstruction_err_:10f}")
-            if numComponents == n_components:
-                X = X_temp
-                transformed = snmf.weights_
-                stretch = snmf.stretch_
-                reconstructed = snmf.reconstruct_matrix(snmf.components_, transformed, stretch)
-    else:
-        snmf = SNMFOptimizer(n_components=numComponents, min_iter=min_iter, max_iter=max_iter, tol=tol, rho=rho, eta=eta, show_plots=True, verbose=True)
-        errors = None
-        X = snmf.fit(intensities)
-        transformed = snmf.weights_
-        stretch = snmf.stretch_
-        reconstructed = snmf.reconstruct_matrix(snmf.components_, transformed, stretch)
-        print(f"    NMF ({numComponents}) reconstruction error: {X.reconstruction_err_:10f}")
-
-    return X, transformed, reconstructed, errors, stretch
 
 
 class SciSpinBox(qtw.QDoubleSpinBox):
@@ -336,16 +197,18 @@ class MainWindow(qtw.QMainWindow):
         self.plot_xmin_DSpinBox.setDecimals(2)
         self.plot_xmin_DSpinBox.setSingleStep(0.01)
         self.xrange_layout.addWidget(self.plot_xmin_DSpinBox, 3,0)
-        self.plot_xmin_DSpinBox.setToolTip("Minimum x-value in plots")
+        self.plot_xmin_DSpinBox.setToolTip("Minimum x-value in plots\n" \
+                                           "(if min equals max, use full dataset)")
 
         self.plot_xmax_DSpinBox = qtw.QDoubleSpinBox()
         self.plot_xmax_DSpinBox.setMinimum(0)
         self.plot_xmax_DSpinBox.setMaximum(999)
-        self.plot_xmax_DSpinBox.setValue(30)
+        self.plot_xmax_DSpinBox.setValue(0)
         self.plot_xmax_DSpinBox.setDecimals(2)
         self.plot_xmax_DSpinBox.setSingleStep(0.01)
         self.xrange_layout.addWidget(self.plot_xmax_DSpinBox, 3,1)
-        self.plot_xmax_DSpinBox.setToolTip("Maximum x-value in plots")
+        self.plot_xmax_DSpinBox.setToolTip("Maximum x-value in plots\n" \
+                                           "(if min equals max, use full dataset)")
 
         #############################
         ##### Algorithm widgets #####
@@ -374,7 +237,7 @@ class MainWindow(qtw.QMainWindow):
         self.algorithm_layout.addWidget(self.ICAButton, 1,2)
 
         self.SNMFButton = qtw.QRadioButton("SNMF")
-        self.SNMFButton.setToolTip("Stretched Non-Negative Matrix Factorization (diffpy)" \
+        self.SNMFButton.setToolTip("Stretched Non-Negative Matrix Factorization (diffpy)\n" \
                                    "WARNING: The SNMF algorithm takes a lot of time.\n" \
                                    "Error calculation will not be performed.")
         self.algorithm_layout.addWidget(self.SNMFButton, 2,0)
@@ -786,15 +649,50 @@ class MainWindow(qtw.QMainWindow):
         "For the sake of analysis in other programs data is exported in input format (2θ not converted to Q)")
         self.results_layout.addWidget(self.export_results_CheckBox, 0,0)
 
-        self.export_compContribute_CheckBox = qtw.QCheckBox("Export component contributions")
+        self.export_recons_CheckBox = qtw.QCheckBox("Reconstructions")
+        self.export_recons_CheckBox.setToolTip("Exports the reconstructed dataset – scan by scan")
+        self.export_recons_CheckBox.setDisabled(True)
+        self.results_layout.addWidget(self.export_recons_CheckBox, 0,1)
+        self.export_results_CheckBox.clicked.connect(
+            lambda state: self.export_recons_CheckBox.setDisabled(False)
+            if state
+            else self.export_recons_CheckBox.setDisabled(True)
+        )
+        self.export_results_CheckBox.clicked.connect(
+            lambda state: self.export_recons_CheckBox.setChecked(False)
+            if not state
+            else None
+        )
+
+        self.export_diffs_CheckBox = qtw.QCheckBox("Differences")
+        self.export_diffs_CheckBox.setToolTip("Exports the difference between dataset and reconstruction – scan by scan")
+        self.export_diffs_CheckBox.setDisabled(True)
+        self.results_layout.addWidget(self.export_diffs_CheckBox, 1,1)
+        self.export_results_CheckBox.clicked.connect(
+            lambda state: self.export_diffs_CheckBox.setDisabled(False)
+            if state
+            else self.export_diffs_CheckBox.setDisabled(True)
+        )
+        self.export_results_CheckBox.clicked.connect(
+            lambda state: self.export_diffs_CheckBox.setChecked(False)
+            if not state
+            else None
+        )
+
+        self.export_compContribute_CheckBox = qtw.QCheckBox("Component contributions")
         self.export_compContribute_CheckBox.setToolTip("Exports the partial component-wise reconstruction\n" \
-                                                       "Each component multiplied by its own scoring, for each scan")
+                                                       "Each component multiplied by its own scoring – scan by scan")
         self.export_compContribute_CheckBox.setDisabled(True)
-        self.results_layout.addWidget(self.export_compContribute_CheckBox, 0,1)
+        self.results_layout.addWidget(self.export_compContribute_CheckBox, 1,0)
         self.export_results_CheckBox.clicked.connect(
             lambda state: self.export_compContribute_CheckBox.setDisabled(False)
             if state
             else self.export_compContribute_CheckBox.setDisabled(True)
+        )
+        self.export_results_CheckBox.clicked.connect(
+            lambda state: self.export_compContribute_CheckBox.setChecked(False)
+            if not state
+            else None
         )
 
 
@@ -805,7 +703,7 @@ class MainWindow(qtw.QMainWindow):
         self.reconstruct_label = qtw.QLabel("Display Reconstruction Scan #")
         self.reconstruct_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
         self.reconstruct_label.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
-        self.recon_plot_layout.addWidget(self.reconstruct_label, 4,0,1,2)
+        self.recon_plot_layout.addWidget(self.reconstruct_label, 4,0,1,2)        
 
         self.reconstruct_widgets = []
 
@@ -882,6 +780,8 @@ class MainWindow(qtw.QMainWindow):
         self.inputformatGroup.buttonClicked.connect(self.update_config_file)
         self.convert2QCheckbox.clicked.connect(self.update_config_file)
         self.wavelengthWidget.valueChanged.connect(self.update_config_file)
+        self.plot_xmin_DSpinBox.valueChanged.connect(self.update_config_file)
+        self.plot_xmax_DSpinBox.valueChanged.connect(self.update_config_file)
         self.plotDataButton.clicked.connect(self.plot_dataset)
         self.algorithmGroup.buttonClicked.connect(self.display_algorithm_widgets)
         self.algorithmGroup.buttonClicked.connect(self.update_config_file)
@@ -973,7 +873,7 @@ class MainWindow(qtw.QMainWindow):
         self.add_recentdir(indir)
 
         # Whenever a new direcotry is loaded, import data
-        self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
+        self.angles, self.intensities = f.import_dataset(self.indirLabel.text() + os.path.sep)
         self.plot_xmin_DSpinBox.setValue(np.min(self.angles))
         self.plot_xmax_DSpinBox.setValue(np.max(self.angles))
 
@@ -984,11 +884,11 @@ class MainWindow(qtw.QMainWindow):
         if infile=="": # If the operation was cancelled
             return None
         self.bkgLabel.setText(infile)
-        #try:
-        import_data(infile)
-        #except:
-        #    print(f"An error occured when loading {infile.split("/")[-1]}")
-        #    self.bkgLabel.setText("Select a background file to subtract from your dataset")
+        try:
+            f.import_data(infile)
+        except:
+            print(f"An error occured when loading {infile.split("/")[-1]}")
+            self.bkgLabel.setText("Select a background file to subtract from your dataset")
 
         return None
 
@@ -1068,6 +968,10 @@ class MainWindow(qtw.QMainWindow):
                             self.wavelengthWidget.blockSignals(True) # blockSignals ensures .setValue doesn't trigger valeuChanged and updates the config, overwriting the load file
                             self.wavelengthWidget.setValue(float(value))
                             self.wavelengthWidget.blockSignals(False)
+                        case "X-axis range":
+                            xmin, xmax = value.split(",")
+                            self.plot_xmin_DSpinBox.setValue(float(xmin))
+                            self.plot_xmax_DSpinBox.setValue(float(xmax))
                         case "Algorithm":
                             for button in self.algorithmGroup.buttons():
                                 if value == button.text():
@@ -1091,6 +995,7 @@ class MainWindow(qtw.QMainWindow):
             outfile.write(f"Input format: {self.inputformatGroup.checkedButton().text()}\n")
             outfile.write(f"Convert to Q: {'True' if self.convert2QCheckbox.isChecked() else 'False'}\n")
             outfile.write(f"Wavelength: {self.wavelengthWidget.value():.6f}\n")
+            outfile.write(f"X-axis range: {self.plot_xmin_DSpinBox.value():.2f},{self.plot_xmax_DSpinBox.value():.2f}\n")
             outfile.write(f"Algorithm: {self.algorithmGroup.checkedButton().text()}\n")
             outfile.write(f"Number of components: {self.numComponentsSlider.value()}\n")
 
@@ -1098,15 +1003,15 @@ class MainWindow(qtw.QMainWindow):
         print("Plotting input dataset\n")
         try:
             if self.angles==None or self.intensities==None:
-              self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
+              self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text() + os.path.sep)
         except ValueError: # If initialized as array with more than one elements, the truth value is ambiguous
             if self.angles.all()==None or self.intensities.all()==None:
-                self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
+                self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text() + os.path.sep)
         angles = self.angles
         intensities = self.intensities
         if self.convert2QCheckbox.isChecked():
             xlabel = "Q [Å⁻¹]"
-            angles = theta_to_Q(angles, self.wavelengthWidget.value())
+            angles = funcs.theta_to_Q(angles, self.wavelengthWidget.value())
         else:
             xlabel = self.inputformatGroup.checkedButton().text()
 
@@ -1153,14 +1058,14 @@ class MainWindow(qtw.QMainWindow):
         
         try:
             if self.angles==None or self.intensities==None:
-              self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
+              self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text() + os.path.sep)
         except ValueError: # If initialized as array with more than one elements, the truth value is ambiguous
             if self.angles.all()==None or self.intensities.all()==None:
-                self.angles, self.intensities = import_dataset(self.indirLabel.text() + os.path.sep)
+                self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text() + os.path.sep)
 
         if self.bkgLabel.text() != "Select a background file to subtract from your dataset":
             try:
-                _, bkgintensity = import_data(self.bkgLabel.text())
+                _, bkgintensity = fileWorker.import_data(self.bkgLabel.text())
             except:
                 print("! Could not read background file. Running without subtraction")
                 return None
@@ -1172,49 +1077,63 @@ class MainWindow(qtw.QMainWindow):
                 print("! Could not subtract background from data. Running without subtraction")
                 return None
 
-        xmin_index = np.searchsorted(self.angles[0], self.plot_xmin_DSpinBox.value())
-        xmax_index = np.searchsorted(self.angles[0], self.plot_xmax_DSpinBox.value())
-        self.angles = self.angles[:,xmin_index:xmax_index]
-        self.intensities = self.intensities[:,xmin_index:xmax_index]
+        if self.plot_xmin_DSpinBox.value() != self.plot_xmax_DSpinBox.value():
+            xmin_index = np.searchsorted(self.angles[0], self.plot_xmin_DSpinBox.value(), side='left')
+            xmax_index = np.searchsorted(self.angles[0], self.plot_xmax_DSpinBox.value(), side='right')
+            self.angles = self.angles[:,xmin_index:xmax_index]
+            self.intensities = self.intensities[:,xmin_index:xmax_index]
 
         errors = None
         lift_factor = None
         stretch = None
         match self.algorithmGroup.checkedButton().text():
             case "PCA":
-                fitted, transformed, reconstructed = PCA_analysis(self.intensities, numComponents,
-                                                                  whiten=self.PCAwhitenCheck.isChecked(),
-                                                                  svd_solver=self.PCAsolverDropdown.currentText(),
-                                                                  tol=self.PCAtolSpinbox.value(),
-                                                                  iterated_power='auto' if self.PCAiterated_powerAutoCheckbox.isChecked else self.PCAiterated_powerSpinbox.value(),
-                                                                  n_oversamples=self.PCAn_oversampledSpinbox.value(),
-                                                                  power_iteration_normalizer=self.PCApower_iteration_normalizerDropdown.currentText())
+                fitted, transformed, reconstructed = analysis.PCA_analysis(
+                    self.intensities,
+                    numComponents,
+                    whiten=self.PCAwhitenCheck.isChecked(),
+                    svd_solver=self.PCAsolverDropdown.currentText(),
+                    tol=self.PCAtolSpinbox.value(),
+                    iterated_power='auto' if self.PCAiterated_powerAutoCheckbox.isChecked else self.PCAiterated_powerSpinbox.value(),
+                    n_oversamples=self.PCAn_oversampledSpinbox.value(),
+                    power_iteration_normalizer=self.PCApower_iteration_normalizerDropdown.currentText()
+                )
             case "NMF":
-                fitted, transformed, reconstructed, errors, lift_factor = NMF_analysis(self.intensities, numComponents,
-                                                                           init=self.NMFinitDropdown.currentText(),
-                                                                           solver=self.NMFsolverDropdown.currentText(),
-                                                                           beta_loss=self.NMFbeta_lossDropdown.currentText() if self.NMFsolverDropdown.currentText()=="mu" else "frobenius",
-                                                                           tol=self.NMFtolSpinbox.value(),
-                                                                           max_iter=self.NMFmax_iterSpinbox.value(),
-                                                                           alpha_W=self.NMFalpha_WDSpinbox.value(),
-                                                                           alpha_H='same' if self.NMFalpha_HsameCheckbox.isChecked() else self.NMFalpha_HDSpinbox.value(),
-                                                                           l1_ratio=self.NMFl1_ratioDSpinbox.value(),
-                                                                           calc_err=self.calc_err_CheckBox.isChecked())
+                fitted, transformed, reconstructed, errors, lift_factor = analysis.NMF_analysis(
+                    self.intensities,
+                    numComponents,
+                    init=self.NMFinitDropdown.currentText(),
+                    solver=self.NMFsolverDropdown.currentText(),
+                    beta_loss=self.NMFbeta_lossDropdown.currentText() if self.NMFsolverDropdown.currentText()=="mu" else "frobenius",
+                    tol=self.NMFtolSpinbox.value(),
+                    max_iter=self.NMFmax_iterSpinbox.value(),
+                    alpha_W=self.NMFalpha_WDSpinbox.value(),
+                    alpha_H='same' if self.NMFalpha_HsameCheckbox.isChecked() else self.NMFalpha_HDSpinbox.value(),
+                    l1_ratio=self.NMFl1_ratioDSpinbox.value(),
+                    calc_err=self.calc_err_CheckBox.isChecked()
+                )
             case "ICA":
-                fitted, transformed, reconstructed = ICA_analysis(self.intensities, numComponents,
-                                                                  algorithm=self.ICAalgorithmDropdown.currentText(),
-                                                                  whiten=False if self.ICAwhitenDropdown.currentText()=='False' else self.ICAwhitenDropdown.currentText(),
-                                                                  fun=self.ICAfunDropdown.currentText(),
-                                                                  max_iter=self.ICAmax_iterSpinbox.value(),
-                                                                  tol=self.ICAtolSpinbox.value(),
-                                                                  whiten_solver=self.ICAwhiten_solverDropdown.currentText())
+                fitted, transformed, reconstructed = analysis.ICA_analysis(
+                    self.intensities,
+                    numComponents,
+                    algorithm=self.ICAalgorithmDropdown.currentText(),
+                    whiten=False if self.ICAwhitenDropdown.currentText()=='False' else self.ICAwhitenDropdown.currentText(),
+                    fun=self.ICAfunDropdown.currentText(),
+                    max_iter=self.ICAmax_iterSpinbox.value(),
+                    tol=self.ICAtolSpinbox.value(),
+                    whiten_solver=self.ICAwhiten_solverDropdown.currentText()
+                )
             case "SNMF":
-                fitted, transformed, stretch, reconstructed = SNMF_analysis(self.intensities, numComponents, # errors
-                                                                            min_iter=self.SNMFmin_iterSpinbox.value(),
-                                                                            max_iter=self.SNMFmax_iterSpinbox.value(),
-                                                                            tol=self.SNMFtol_SciSpinbox.value(),
-                                                                            rho=self.SNMFrho_SciSpinbox.value(),
-                                                                            eta=self.SNMFeta_DSpinbox.value())
+                fitted, transformed, reconstructed, errors, stretch = analysis.SNMF_analysis(
+                    self.intensities,
+                    numComponents,
+                    min_iter=self.SNMFmin_iterSpinbox.value(),
+                    max_iter=self.SNMFmax_iterSpinbox.value(),
+                    tol=self.SNMFtol_SciSpinbox.value(),
+                    rho=self.SNMFrho_SciSpinbox.value(),
+                    eta=self.SNMFeta_DSpinbox.value(),
+                    calc_err=self.calc_err_CheckBox.isChecked()
+                )
 
         print("Analysis completed\n")
         self.plot_analysis(numComponents, fitted, transformed, reconstructed, errors, lift_factor, stretch)
@@ -1336,9 +1255,7 @@ class MainWindow(qtw.QMainWindow):
 
         fig.show()
 
-        if self.export_results_CheckBox.isChecked():
-            print("Exporting results")
-            self.export_results(fitted, transformed, reconstructed, fig, errors, lift_factor, stretch)
+        if self.export_results_CheckBox.isChecked(): self.export_results(fitted, transformed, reconstructed, fig, errors, lift_factor, stretch)
         return None
 
     def write_summary(self, results_path, errors=None, lift_factor=None):
@@ -1423,8 +1340,12 @@ class MainWindow(qtw.QMainWindow):
                 for j in range(len(self.angles[i])):
                     outfile.write(f"{self.angles[i][j]}\t{reconstructed[i][j]}\n")
         print("Reconstructions written")
+        return None
+    
+    def write_differences(self, results_path, reconstructed):
+        os.mkdir(f"{results_path}/differences")
         for i in range(len(reconstructed)):
-            with open(f"{results_path}/reconstructions/diff_scan_{i+1:04}.xy", "w") as outfile:
+            with open(f"{results_path}/differences/diff_scan_{i+1:04}.xy", "w") as outfile:
                 for j in range(len(self.angles[i])):
                     outfile.write(f"{self.angles[i][j]}\t{self.intensities[i][j]-reconstructed[i][j]}\n")
         print("Differences written")
@@ -1434,8 +1355,10 @@ class MainWindow(qtw.QMainWindow):
         NotImplemented
 
     def export_results(self, fitted, transformed, reconstructed, fig=None, errors=None, lift_factor=None, stretch=None):
+        print("Exporting results")
         if not os.path.exists(f"{self.indirLabel.text()}/BaSSET_results"):
             os.mkdir(f"{self.indirLabel.text()}/BaSSET_results")
+            print(f"Results can be found in: {self.indirLabel.text()}/BaSSET_results")
 
         export_time = datetime.now().strftime("%y%m%d-%H%M%S")
         results_path = f"{self.indirLabel.text()}/BaSSET_results/{export_time}_{self.algorithmGroup.checkedButton().text()}_{self.numComponentsSlider.value()}"
@@ -1444,12 +1367,11 @@ class MainWindow(qtw.QMainWindow):
             fig.savefig(f"{results_path}/overview.jpg")
         self.write_summary(results_path, errors, lift_factor)
         self.write_components(results_path, fitted)
-        if self.export_compContribute_CheckBox.isChecked():
-            self.write_compContribute(results_path, fitted, transformed)
+        if self.export_compContribute_CheckBox.isChecked(): self.write_compContribute(results_path, fitted, transformed)
         self.write_scores(results_path, transformed)
-        self.write_reconstructions(results_path, reconstructed)
-        if self.algorithmGroup.checkedButton().text()=="SNMF":
-            self.write_stretch(results_path, stretch)
+        if self.export_recons_CheckBox.isChecked: self.write_reconstructions(results_path, reconstructed)
+        if self.export_diffs_CheckBox.isChecked: self.write_differences(results_path, reconstructed)
+        if self.algorithmGroup.checkedButton().text()=="SNMF": self.write_stretch(results_path, stretch)
         print("Exporting results completed\n")
         return None
 
