@@ -1,8 +1,6 @@
 import sys
 import os
-from glob import glob
 from datetime import datetime
-from re import search
 
 from basset.utils import (
     analysis,
@@ -10,7 +8,6 @@ from basset.utils import (
     funcs
 )
 
-from natsort import natsorted
 import numpy as np
 import matplotlib.pyplot as plt
 import PyQt6.QtCore as qtc
@@ -43,6 +40,7 @@ plt.rcParams.update({
     "ytick.major.size": 4, # major tick size in points (3.5 default)
     "ytick.minor.size": 2, # minor tick size in points (2 default)
     "legend.frameon": False,
+    "legend.handlelength": 1,
     "savefig.dpi": 300, # figure dots per inch or 'figure'
     "savefig.bbox": "tight", # {tight, standard} (tight is incompatible with animations)
     "savefig.pad_inches": 0 # padding to be used, when bbox is set to 'tight'
@@ -56,6 +54,7 @@ class SciSpinBox(qtw.QDoubleSpinBox):
         self.setMaximum(np.inf)
         self.setDecimals(15)
         self.setMinimumWidth(110)
+        self.multiplier = 10
 
     def textFromValue(self, value):
         return "{:.2e}".format(value)
@@ -68,6 +67,12 @@ class SciSpinBox(qtw.QDoubleSpinBox):
 
     def validate(self, text, pos):
         return qtg.QDoubleValidator.State.Acceptable, text, pos
+    
+    def stepBy(self, steps):
+        if steps > 0:
+            self.setValue(self.value() * self.multiplier)
+        else:
+            self.setValue(self.value() / self.multiplier)
 
 class MainWindow(qtw.QMainWindow):
     def __init__(self):
@@ -81,7 +86,7 @@ class MainWindow(qtw.QMainWindow):
 
         self.setWindowIcon(qtg.QIcon(f"{self.configpath}/assets/icon.ico"))
         self.setWindowTitle("Battery Signal Selection and Enhancement Toolbox")
-        self.resize(qtc.QSize(640,480)) # Increase to 640x480 in future?
+        self.resize(qtc.QSize(640,480))
         self.central_widget = qtw.QWidget(self)
         self.grid = qtw.QGridLayout()
         self.central_widget.setLayout(self.grid)
@@ -100,7 +105,6 @@ class MainWindow(qtw.QMainWindow):
 
         self.inputformatGroup = qtw.QButtonGroup()
         self.thetaButton = qtw.QRadioButton("2θ [°]")
-        self.thetaButton.setToolTip("Uses supplied wavelength to display data in Q [Å⁻¹]")
         self.inputformatGroup.addButton(self.thetaButton)
         self.input_format_layout.addWidget(self.thetaButton, 1,0)
 
@@ -117,6 +121,7 @@ class MainWindow(qtw.QMainWindow):
         self.input_format_layout.addLayout(self.indir_options_layout, 2,0,1,3)
 
         self.convert2QCheckbox = qtw.QCheckBox("Convert to Q")
+        self.convert2QCheckbox.setToolTip("Uses supplied wavelength to display data in Q [Å⁻¹]")
         self.indir_options_layout.addWidget(self.convert2QCheckbox)
         self.inputformatGroup.buttonClicked.connect(
             lambda button: self.convert2QCheckbox.setEnabled(True)
@@ -161,22 +166,29 @@ class MainWindow(qtw.QMainWindow):
         self.bkg_layout = qtw.QHBoxLayout()
         self.bkg_layout.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
         self.grid.addLayout(self.bkg_layout, 1,1,1,2)
-        
-        self.bkgLabel = qtw.QLabel("Select a background file to subtract from your dataset")
+
+        self.bkgLabel = qtw.QLabel("Select a background for subtraction")
         self.bkgLabel.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
         self.bkgLabel.setMinimumWidth(350)
         self.bkgLabel.setSizePolicy(qtw.QSizePolicy.Policy.Preferred, qtw.QSizePolicy.Policy.Fixed)
         self.bkgLabel.setFrameShape(qtw.QFrame.Shape.Panel)
         self.bkgLabel.setFrameShadow(qtw.QFrame.Shadow.Sunken)
         self.bkg_layout.addWidget(self.bkgLabel)
-
-        self.getbkgButton = qtw.QPushButton("Load")
-        self.getbkgButton.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
-        self.bkg_layout.addWidget(self.getbkgButton)
-
-        self.rmbkgButton = qtw.QPushButton("Remove background")
+        
+        self.rmbkgButton = qtw.QPushButton("Remove")
         self.rmbkgButton.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
         self.bkg_layout.addWidget(self.rmbkgButton)
+
+        self.bkgScale_DSpinBox = SciSpinBox()
+        self.bkgScale_DSpinBox.setMinimum(0)
+        self.bkgScale_DSpinBox.setValue(1)
+        self.bkgScale_DSpinBox.setToolTip('Scale your background to match dataset\n' \
+                                          '(View in "Plot input dataset")')
+        self.bkg_layout.addWidget(self.bkgScale_DSpinBox)
+
+        self.getbkgButton = qtw.QPushButton("Load background")
+        self.getbkgButton.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
+        self.bkg_layout.addWidget(self.getbkgButton)
 
         self.plotDataButton = qtw.QPushButton("Plot input dataset")
         self.plotDataButton.setSizePolicy(qtw.QSizePolicy.Policy.MinimumExpanding, qtw.QSizePolicy.Policy.Ignored)
@@ -185,14 +197,14 @@ class MainWindow(qtw.QMainWindow):
         self.xrange_layout = qtw.QGridLayout()
         self.grid.addLayout(self.xrange_layout, 3,0)
 
-        self.plot_xrange_label = qtw.QLabel("X-axis range")
+        self.plot_xrange_label = qtw.QLabel("Analyze x-axis range")
         self.plot_xrange_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
         self.plot_xrange_label.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
         self.xrange_layout.addWidget(self.plot_xrange_label, 2,0,1,2)
 
         self.plot_xmin_DSpinBox = qtw.QDoubleSpinBox()
         self.plot_xmin_DSpinBox.setMinimum(0)
-        self.plot_xmin_DSpinBox.setMaximum(999)
+        self.plot_xmin_DSpinBox.setMaximum(999.99)
         self.plot_xmin_DSpinBox.setValue(0)
         self.plot_xmin_DSpinBox.setDecimals(2)
         self.plot_xmin_DSpinBox.setSingleStep(0.01)
@@ -202,7 +214,7 @@ class MainWindow(qtw.QMainWindow):
 
         self.plot_xmax_DSpinBox = qtw.QDoubleSpinBox()
         self.plot_xmax_DSpinBox.setMinimum(0)
-        self.plot_xmax_DSpinBox.setMaximum(999)
+        self.plot_xmax_DSpinBox.setMaximum(999.99)
         self.plot_xmax_DSpinBox.setValue(0)
         self.plot_xmax_DSpinBox.setDecimals(2)
         self.plot_xmax_DSpinBox.setSingleStep(0.01)
@@ -768,38 +780,11 @@ class MainWindow(qtw.QMainWindow):
         self.recon_plot_layout.addWidget(self.reconstruct_widget9, 9,1)
         self.reconstruct_widgets.append(self.reconstruct_widget9)
 
-        ################################
-        ##### Function connections #####
-        ################################
-        self.indirButton.clicked.connect(self.set_indir)
-        self.indirButton.clicked.connect(self.update_config_file)
-        self.getbkgButton.clicked.connect(self.set_bkgfile)
-        self.getbkgButton.clicked.connect(self.update_config_file)
-        self.rmbkgButton.clicked.connect(lambda: self.bkgLabel.setText("Select a background file to subtract from your dataset"))
-        self.indirButton.clicked.connect(self.update_config_file)
-        self.inputformatGroup.buttonClicked.connect(self.update_config_file)
-        self.convert2QCheckbox.clicked.connect(self.update_config_file)
-        self.wavelengthWidget.valueChanged.connect(self.update_config_file)
-        self.plot_xmin_DSpinBox.valueChanged.connect(self.update_config_file)
-        self.plot_xmax_DSpinBox.valueChanged.connect(self.update_config_file)
-        self.plotDataButton.clicked.connect(self.plot_dataset)
-        self.algorithmGroup.buttonClicked.connect(self.display_algorithm_widgets)
-        self.algorithmGroup.buttonClicked.connect(self.update_config_file)
-        self.numComponentsSlider.valueChanged.connect(lambda value: self.numComponentsLabel.setText(str(value)))
-        self.numComponentsSlider.valueChanged.connect(self.update_config_file)
-        self.numComponentsSlider.valueChanged.connect(self.display_reconstruction_widgets)
-        self.runAnalysisButton.clicked.connect(self.run_analysis)
-
         ########################
         ##### Top bar menu #####
         ########################
         menu = self.menuBar()
         file_menu = menu.addMenu("File")
-        new_indir_button = qtg.QAction("Set file directory...", self)
-        new_indir_button.triggered.connect(self.set_indir)
-        new_indir_button.triggered.connect(self.update_config_file)
-        file_menu.addAction(new_indir_button)
-        file_menu.addAction(new_indir_button)
         open_indir_button = qtg.QAction("Open file directory", self)
         open_indir_button.triggered.connect(lambda: qtg.QDesktopServices.openUrl(qtc.QUrl.fromLocalFile(self.indirLabel.text())))
         file_menu.addAction(open_indir_button)
@@ -810,15 +795,21 @@ class MainWindow(qtw.QMainWindow):
         
         file_menu.addSeparator()
         
-        self.file_submenu_recent = file_menu.addMenu("Choose recent")
-        
-        self.file_submenu_recent_separator = self.file_submenu_recent.addSeparator()
+        self.file_submenu_recent_dirs = file_menu.addMenu("Recent datasets")
+        self.file_submenu_recent_dirs_separator = self.file_submenu_recent_dirs.addSeparator()
 
-        self.clear_recent_button = qtg.QAction("Clear recently opened", self)
-        #self.clear_recent_button.triggered.connect(self.clear_recent_dirs)
-        self.clear_recent_button.triggered.connect(lambda: [self.file_submenu_recent.removeAction(action) for action in self.file_submenu_recent.actions()[:-2]])
-        self.clear_recent_button.triggered.connect(self.update_config_file)
-        self.file_submenu_recent.addAction(self.clear_recent_button)
+        self.clear_recent_dirs_button = qtg.QAction("Clear recently opened", self)
+        self.clear_recent_dirs_button.triggered.connect(lambda: [self.file_submenu_recent_dirs.removeAction(action) for action in self.file_submenu_recent_dirs.actions()[:-2]])
+        self.clear_recent_dirs_button.triggered.connect(self.update_config_file)
+        self.file_submenu_recent_dirs.addAction(self.clear_recent_dirs_button)
+
+        self.file_submenu_recent_bkgs = file_menu.addMenu("Recent backgrounds")
+        self.file_submenu_recent_bkgs_separator = self.file_submenu_recent_dirs.addSeparator()
+
+        self.clear_recent_bkgs_button = qtg.QAction("Clear recently opened", self)
+        self.clear_recent_bkgs_button.triggered.connect(lambda: [self.file_submenu_recent_bkgs.removeAction(action) for action in self.file_submenu_recent_bkgs.actions()[:-2]])
+        self.clear_recent_bkgs_button.triggered.connect(self.update_config_file)
+        self.file_submenu_recent_bkgs.addAction(self.clear_recent_bkgs_button)
 
         file_menu.addSeparator()
 
@@ -837,11 +828,36 @@ class MainWindow(qtw.QMainWindow):
         about_button.triggered.connect(self.about_button_clicked)
         help_menu.addAction(about_button)
 
+        ##### Setup GUI according to config
         if os.path.exists(self.configfile):
             self.read_config_file()
 
         self.display_algorithm_widgets()
         self.display_reconstruction_widgets()
+
+        ################################
+        ##### Function connections #####
+        ################################
+        self.indirButton.clicked.connect(self.set_indir)
+        self.indirButton.clicked.connect(self.update_config_file)
+        self.getbkgButton.clicked.connect(self.set_bkgfile)
+        self.getbkgButton.clicked.connect(self.update_config_file)
+        self.bkgScale_DSpinBox.valueChanged.connect(self.update_config_file)
+        self.rmbkgButton.clicked.connect(lambda: self.bkgLabel.setText("Select a background for subtraction"))
+        self.indirButton.clicked.connect(self.update_config_file)
+        self.inputformatGroup.buttonClicked.connect(self.update_config_file)
+        self.convert2QCheckbox.clicked.connect(self.update_config_file)
+        self.wavelengthWidget.valueChanged.connect(self.update_config_file)
+        self.plot_xmin_DSpinBox.valueChanged.connect(self.update_config_file)
+        self.plot_xmax_DSpinBox.valueChanged.connect(self.update_config_file)
+        self.plotDataButton.clicked.connect(self.plot_dataset)
+        self.algorithmGroup.buttonClicked.connect(self.display_algorithm_widgets)
+        self.algorithmGroup.buttonClicked.connect(self.update_config_file)
+        self.calc_err_CheckBox.clicked.connect(self.update_config_file)
+        self.numComponentsSlider.valueChanged.connect(lambda value: self.numComponentsLabel.setText(str(value)))
+        self.numComponentsSlider.valueChanged.connect(self.update_config_file)
+        self.numComponentsSlider.valueChanged.connect(self.display_reconstruction_widgets)
+        self.runAnalysisButton.clicked.connect(self.run_analysis)
 
     def closeEvent(self, event):
         qtw.QApplication.quit()
@@ -898,46 +914,61 @@ class MainWindow(qtw.QMainWindow):
                 indir = str(qtw.QFileDialog.getExistingDirectory(self, directory=os.path.dirname(self.indirLabel.text())))
             if indir == "": # If the operation was cancelled
                 return None
-        self.indirLabel.setText(indir)
-        self.add_recentdir(indir)
 
-        # Whenever a new direcotry is loaded, import data
-        self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text() + os.path.sep)
-        self.plot_xmin_DSpinBox.setValue(np.min(self.angles))
-        self.plot_xmax_DSpinBox.setValue(np.max(self.angles))
-
-        return None
-    
-    def set_bkgfile(self):
-        infile,_ = qtw.QFileDialog.getOpenFileName(self)
-        if infile=="": # If the operation was cancelled
-            return None
-        self.bkgLabel.setText(infile)
+        # Confirm dataset can be imported by the program
         try:
-            fileWorker.import_data(infile)
+            self.angles, self.intensities = fileWorker.import_dataset(indir)
         except:
-            print(f"An error occured when loading {infile.split("/")[-1]}")
-            self.bkgLabel.setText("Select a background file to subtract from your dataset")
-
-        return None
+            print(f"An error occured when loading ...{'/'.join(indir.split("/")[-3:])}")
+        else:
+            self.plot_xmin_DSpinBox.setValue(np.min(self.angles))
+            self.plot_xmax_DSpinBox.setValue(np.max(self.angles))
+            self.indirLabel.setText(indir)
+            self.add_recentdir(indir)
+            print("Dataset imported\n")
 
     def add_recentdir(self, recentdir):
         recentdir_button = qtg.QAction(recentdir, self)
         recentdir_button.triggered.connect(lambda: self.set_indir(recentdir_button.text()))
-        if recentdir in (action.text() for action in self.file_submenu_recent.actions()):
-            self.file_submenu_recent.removeAction(next(action for action in self.file_submenu_recent.actions() if action.text()==recentdir))
-        elif len(self.file_submenu_recent.actions()) >= 10+2:
-            self.file_submenu_recent.removeAction(self.file_submenu_recent.actions()[-3]) # -1 is "clear", -2 is separator, so -3 should be oldest "recent"
-        elif len(self.file_submenu_recent.actions()) == 2: # To ensure first "recent" is above the separator
-            self.file_submenu_recent.insertAction(self.file_submenu_recent_separator, recentdir_button)
-            return None
-        self.file_submenu_recent.insertAction(self.file_submenu_recent.actions()[0], recentdir_button)
-        return None
+        if recentdir in (action.text() for action in self.file_submenu_recent_dirs.actions()):
+            self.file_submenu_recent_dirs.removeAction(next(action for action in self.file_submenu_recent_dirs.actions() if action.text()==recentdir))
+        elif len(self.file_submenu_recent_dirs.actions()) >= 10+2:
+            self.file_submenu_recent_dirs.removeAction(self.file_submenu_recent_dirs.actions()[-3]) # -1 is "clear", -2 is separator, so -3 should be oldest "recent"
+        self.file_submenu_recent_dirs.insertAction(self.file_submenu_recent_dirs.actions()[0], recentdir_button)
+
+    def set_bkgfile(self, infile=None):
+        if infile is None or infile is False: # Load background widget passes "False"
+            if self.bkgLabel.text() == "Select a background for subtraction":
+                infile,_ = qtw.QFileDialog.getOpenFileName(self)
+                print(infile)
+            else:
+                infile,_ = qtw.QFileDialog.getOpenFileName(self, directory=os.path.dirname(self.bkgLabel.text()))
+            if infile == "": # If the operation was cancelled
+                return None
+
+        # Confirm bkgfile can be imported by the program
+        try:
+            fileWorker.import_data(infile) # As single-file read is fast, data is not saved as attribute
+        except:
+            print(f"An error occured when loading {infile.split("/")[-1]}")
+        else: 
+            self.bkgLabel.setText(infile)
+            self.add_recentbkg(infile)
+            print("Background imported\n")
+
+    def add_recentbkg(self, recentbkg):
+        recentbkg_button = qtg.QAction(recentbkg, self)
+        recentbkg_button.triggered.connect(lambda: self.set_bkgfile(recentbkg_button.text()))
+        if recentbkg in (action.text() for action in self.file_submenu_recent_bkgs.actions()):
+            self.file_submenu_recent_bkgs.removeAction(next(action for action in self.file_submenu_recent_bkgs.actions() if action.text()==recentbkg))
+        elif len(self.file_submenu_recent_bkgs.actions()) >= 10+2:
+            self.file_submenu_recent_bkgs.removeAction(self.file_submenu_recent_bkgs.actions()[-3]) # -1 is "clear", -2 is separator, so -3 should be oldest "recent"
+        self.file_submenu_recent_bkgs.insertAction(self.file_submenu_recent_bkgs.actions()[0], recentbkg_button)
 
     def read_config_file(self):
         with open(self.configfile, encoding='utf-8') as infile:
             lines = infile.readlines()
-            for i, line in enumerate(lines):
+            for line in lines:
                 line = line.replace('\n','')
                 pairs = line.split(": ")
                 name = pairs[0]
@@ -950,6 +981,14 @@ class MainWindow(qtw.QMainWindow):
                             for dir in reversed(value.split(", ")):
                                 if dir != "":
                                     self.add_recentdir(dir)
+                        case "Background file":
+                            self.bkgLabel.setText(value)
+                        case "Background scale":
+                            self.bkgScale_DSpinBox.setValue(float(value))
+                        case "Recent backgrounds":
+                            for bkg in reversed(value.split(", ")):
+                                if bkg != "":
+                                    self.add_recentbkg(bkg)
                         case "Input format":
                             for button in self.inputformatGroup.buttons():
                                 if value == button.text():
@@ -984,36 +1023,63 @@ class MainWindow(qtw.QMainWindow):
                             self.numComponentsSlider.setValue(int(value))
                             self.numComponentsLabel.setText(value)
                             self.numComponentsSlider.blockSignals(False)
+                        case "Calculate errors":
+                            if value=="True":
+                                self.calc_err_CheckBox.setChecked(True)
+                            elif value=="False":
+                                self.calc_err_CheckBox.setChecked(False)
+                            else:
+                                print("Did not recognize {line} as True/False")
                         case _:
                             print(f"\"{line}\" could not be parsed\n" \
                                   "Ignoring.")
+        return None
 
     def update_config_file(self):
         with open(self.configfile, "w", encoding='utf-8') as outfile:
             outfile.write(f"Current file directory: {self.indirLabel.text() if self.indirLabel.text()!='Select the folder containing your data files' else ''}\n")
-            outfile.write(f"Recent directories: {', '.join(action.text() for action in self.file_submenu_recent.actions()[:-2])}\n")
+            outfile.write(f"Recent directories: {', '.join(action.text() for action in self.file_submenu_recent_dirs.actions()[:-2])}\n")
+            outfile.write(f"Background file: {self.bkgLabel.text() if self.bkgLabel.text()!='Select a background for subtraction' else ''}\n")
+            outfile.write(f"Background scale: {self.bkgScale_DSpinBox.value():.3f}\n")
+            outfile.write(f"Recent backgrounds: {', '.join(action.text() for action in self.file_submenu_recent_bkgs.actions()[:-2])}\n")
             outfile.write(f"Input format: {self.inputformatGroup.checkedButton().text()}\n")
             outfile.write(f"Convert to Q: {'True' if self.convert2QCheckbox.isChecked() else 'False'}\n")
             outfile.write(f"Wavelength: {self.wavelengthWidget.value():.6f}\n")
             outfile.write(f"X-axis range: {self.plot_xmin_DSpinBox.value():.2f},{self.plot_xmax_DSpinBox.value():.2f}\n")
             outfile.write(f"Algorithm: {self.algorithmGroup.checkedButton().text()}\n")
             outfile.write(f"Number of components: {self.numComponentsSlider.value()}\n")
+            outfile.write(f"Calculate errors: {'True' if self.calc_err_CheckBox.isChecked() else 'False'}\n")
 
     def plot_dataset(self):
         print("Plotting input dataset\n")
         try:
             if self.angles==None or self.intensities==None:
-              self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text() + os.path.sep)
+              self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text())
         except ValueError: # If initialized as array with more than one elements, the truth value is ambiguous
             if self.angles.all()==None or self.intensities.all()==None:
-                self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text() + os.path.sep)
-        angles = self.angles
-        intensities = self.intensities
+                self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text())
+
+        angles = self.angles.copy()
+        intensities = self.intensities.copy()
+
         if self.convert2QCheckbox.isChecked():
             xlabel = "Q [Å⁻¹]"
             angles = funcs.theta_to_Q(angles, self.wavelengthWidget.value())
         else:
             xlabel = self.inputformatGroup.checkedButton().text()
+
+        if self.bkgLabel.text() != "Select a background for subtraction":
+            try:
+                _, bkgintensity = fileWorker.import_data(self.bkgLabel.text())
+            except:
+                print("! Could not read background. Fix/remove background and try again")
+                return None
+            try:
+                for i, intensity in enumerate(intensities):
+                    intensities[i] = intensity - bkgintensity*self.bkgScale_DSpinBox.value()
+            except:
+                print("! Could not subtract background from data. Fix/remove background and try again")
+                return None
 
         fig = plt.figure()
         cmap = plt.get_cmap('inferno')
@@ -1051,6 +1117,8 @@ class MainWindow(qtw.QMainWindow):
             if not os.path.exists(f"{self.indirLabel.text()}/BaSSET_results"):
                 os.mkdir(f"{self.indirLabel.text()}/BaSSET_results")
             fig.savefig(f"{self.indirLabel.text()}/BaSSET_results/input_dataset.png")
+        
+        return None
 
     def run_analysis(self):
         print("Beginning analysis...")
@@ -1058,30 +1126,35 @@ class MainWindow(qtw.QMainWindow):
         
         try:
             if self.angles==None or self.intensities==None:
-              self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text() + os.path.sep)
+              self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text())
         except ValueError: # If initialized as array with more than one elements, the truth value is ambiguous
             if self.angles.all()==None or self.intensities.all()==None:
-                self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text() + os.path.sep)
+                self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text())
 
-        if self.bkgLabel.text() != "Select a background file to subtract from your dataset":
+        angles = self.angles.copy()
+        intensities = self.intensities.copy()
+
+        if self.bkgLabel.text() != "Select a background for subtraction":
             try:
                 _, bkgintensity = fileWorker.import_data(self.bkgLabel.text())
             except:
-                print("! Could not read background file. Running without subtraction")
+                print("! Could not read background. Fix/remove background and try again")
                 return None
             try:
-
-                for i, intensity in enumerate(self.intensities):
-                    self.intensities[i] = intensity - bkgintensity
+                for i, intensity in enumerate(intensities):
+                    intensities[i] = intensity - bkgintensity*self.bkgScale_DSpinBox.value()
             except:
-                print("! Could not subtract background from data. Running without subtraction")
+                print("! Could not subtract background from data. Fix/remove background and try again")
                 return None
+            
+        if self.convert2QCheckbox.isChecked():
+            angles = funcs.theta_to_Q(angles, self.wavelengthWidget.value())
 
-        if self.plot_xmin_DSpinBox.value() != self.plot_xmax_DSpinBox.value():
-            xmin_index = np.searchsorted(self.angles[0], self.plot_xmin_DSpinBox.value(), side='left')
-            xmax_index = np.searchsorted(self.angles[0], self.plot_xmax_DSpinBox.value(), side='right')
-            self.angles = self.angles[:,xmin_index:xmax_index]
-            self.intensities = self.intensities[:,xmin_index:xmax_index]
+        if self.plot_xmin_DSpinBox.value() != self.plot_xmax_DSpinBox.value(): # Crop according to converted data
+            xmin_index = np.searchsorted(angles[0], self.plot_xmin_DSpinBox.value(), side='left')
+            xmax_index = np.searchsorted(angles[0], self.plot_xmax_DSpinBox.value(), side='right')
+            angles = angles[:,xmin_index:xmax_index] # Cut unconverted data for later
+            intensities = intensities[:,xmin_index:xmax_index]
 
         errors = None
         lift_factor = None
@@ -1089,7 +1162,7 @@ class MainWindow(qtw.QMainWindow):
         match self.algorithmGroup.checkedButton().text():
             case "PCA":
                 fitted, transformed, reconstructed = analysis.PCA_analysis(
-                    self.intensities,
+                    intensities,
                     numComponents,
                     whiten=self.PCAwhitenCheck.isChecked(),
                     svd_solver=self.PCAsolverDropdown.currentText(),
@@ -1100,7 +1173,7 @@ class MainWindow(qtw.QMainWindow):
                 )
             case "NMF":
                 fitted, transformed, reconstructed, errors, lift_factor = analysis.NMF_analysis(
-                    self.intensities,
+                    intensities,
                     numComponents,
                     init=self.NMFinitDropdown.currentText(),
                     solver=self.NMFsolverDropdown.currentText(),
@@ -1114,18 +1187,19 @@ class MainWindow(qtw.QMainWindow):
                 )
             case "ICA":
                 fitted, transformed, reconstructed = analysis.ICA_analysis(
-                    self.intensities,
+                    intensities,
                     numComponents,
                     algorithm=self.ICAalgorithmDropdown.currentText(),
                     whiten=False if self.ICAwhitenDropdown.currentText()=='False' else self.ICAwhitenDropdown.currentText(),
                     fun=self.ICAfunDropdown.currentText(),
                     max_iter=self.ICAmax_iterSpinbox.value(),
                     tol=self.ICAtolSpinbox.value(),
-                    whiten_solver=self.ICAwhiten_solverDropdown.currentText()
+                    whiten_solver=self.ICAwhiten_solverDropdown.currentText(),
+                    calc_err=self.calc_err_CheckBox.isChecked()
                 )
             case "SNMF":
                 fitted, transformed, reconstructed, errors, stretch = analysis.SNMF_analysis(
-                    self.intensities,
+                    intensities,
                     numComponents,
                     min_iter=self.SNMFmin_iterSpinbox.value(),
                     max_iter=self.SNMFmax_iterSpinbox.value(),
@@ -1143,8 +1217,30 @@ class MainWindow(qtw.QMainWindow):
             xlabel = "Q [Å⁻¹]"
             angles = funcs.theta_to_Q(self.angles, self.wavelengthWidget.value())
         else:
-            angles = self.angles
+            angles = self.angles.copy()
             xlabel = self.inputformatGroup.checkedButton().text()
+
+        intensities = self.intensities.copy()
+
+        if self.bkgLabel.text() != "Select a background for subtraction":
+            try:
+                _, bkgintensity = fileWorker.import_data(self.bkgLabel.text())
+            except:
+                print("! Could not read background. Fix/remove background and try again")
+                return None
+            try:
+                for i, intensity in enumerate(intensities):
+                    intensities[i] = intensity - bkgintensity*self.bkgScale_DSpinBox.value()
+            except:
+                print("! Could not subtract background from data. Fix/remove background and try again")
+                return None
+            
+        if self.plot_xmin_DSpinBox.value() != self.plot_xmax_DSpinBox.value(): # Crop according to converted data
+            xmin_index = np.searchsorted(angles[0], self.plot_xmin_DSpinBox.value(), side='left')
+            xmax_index = np.searchsorted(angles[0], self.plot_xmax_DSpinBox.value(), side='right')
+            angles = angles[:,xmin_index:xmax_index] # Cut unconverted data for later
+            intensities = intensities[:,xmin_index:xmax_index]
+
 
         reconNum = []
         for widget in self.reconstruct_widgets:
@@ -1188,18 +1284,18 @@ class MainWindow(qtw.QMainWindow):
             ax_comp.set_xlim(np.min(angles[i]), np.max(angles[i]))
             ax_comp.set_ylim(min(fitted.components_[i]) - max(fitted.components_[i])*0.05, max(fitted.components_[i])*1.05)
 
-            difference = self.intensities[reconNum[i]]-reconstructed[reconNum[i]]
-            distance = np.abs(min(np.min(reconstructed[reconNum[i]]),np.min(self.intensities[reconNum[i]]))-np.max(difference))
+            difference = intensities[reconNum[i]]-reconstructed[reconNum[i]]
+            distance = np.abs(min(np.min(reconstructed[reconNum[i]]),np.min(intensities[reconNum[i]]))-np.max(difference))
  
             ax_recon.plot(angles[reconNum[i]], reconstructed[reconNum[i]], color="#DD0000", label="Reconstructed")
-            ax_recon.plot(angles[reconNum[i]], self.intensities[reconNum[i]], "k:", label="Original")
+            ax_recon.plot(angles[reconNum[i]], intensities[reconNum[i]], "k:", label="Original")
             ax_recon.plot(angles[reconNum[i]], difference-distance*1.05, color="#2EC483", label="Difference")
             ax_recon.ticklabel_format(axis="y", style="sci", scilimits=[0,0])
             ax_recon.set_title(f"Scan {reconNum[i]+1}") # Reconstruction num
             ax_recon.set_xlabel(xlabel)
             ax_recon.sharex(ax_comp)
-            ax_recon.set_ylim((np.min(difference)-distance)*1.05 - max(np.max(self.intensities[reconNum[i]]),np.max(reconstructed[reconNum[i]]))*0.05,
-                              max(np.max(self.intensities[reconNum[i]]),np.max(reconstructed[reconNum[i]]))*1.05)
+            ax_recon.set_ylim((np.min(difference)-distance)*1.05 - max(np.max(intensities[reconNum[i]]),np.max(reconstructed[reconNum[i]]))*0.05,
+                              max(np.max(intensities[reconNum[i]]),np.max(reconstructed[reconNum[i]]))*1.05)
 
             ax_scores.plot(np.arange(1,len(angles)+1), transformed[:,i], color=colors[i], label=f"Comp. {i+1}")
 
@@ -1221,20 +1317,20 @@ class MainWindow(qtw.QMainWindow):
 
         match self.algorithmGroup.checkedButton().text():
             case "PCA":
-                ax_errors.plot(np.arange(1, min(10,min(np.shape(self.intensities)))+1), fitted.explained_variance_ratio_*100, "ko--")
+                ax_errors.plot(np.arange(1, min(10,min(np.shape(intensities)))+1), fitted.explained_variance_ratio_*100, "ko--")
                 ax_errors.set_title("Explained variances")
             case "NMF":
                 if errors is not None:
-                    ax_errors.plot(np.arange(1, min(10,min(np.shape(self.intensities)))+1), errors, "ko--")
+                    ax_errors.plot(np.arange(1, min(10,min(np.shape(intensities)))+1), errors, "ko--")
                     ax_errors.set_title("Reconstruction error")
             case "ICA":
-                print(f"ICA does not return a numerical indication for goodness of fit")
+                pass
             case "SNMF":
                 print(f"SNMF reconstruction error calculation is disabled due to slow convergence")
                 """
-                ax_errors.plot(np.arange(1, min(10,min(np.shape(self.intensities)))+1), errors, "ko--")
+                ax_errors.plot(np.arange(1, min(10,min(np.shape(intensities)))+1), errors, "ko--")
                 ax_errors.set_title("Reconstruction error (Not Implemented)")
-                axs[2][2].plot(np.arange(1, min(10,min(np.shape(self.intensities)))+1, stretch, "ko--"))
+                axs[2][2].plot(np.arange(1, min(10,min(np.shape(intensities)))+1, stretch, "ko--"))
                 axs[2][2].set_title("Stretching")
                 """
         ax_errors.set_xlim(0.9, 10.1)
@@ -1369,8 +1465,8 @@ class MainWindow(qtw.QMainWindow):
         self.write_components(results_path, fitted)
         if self.export_compContribute_CheckBox.isChecked(): self.write_compContribute(results_path, fitted, transformed)
         self.write_scores(results_path, transformed)
-        if self.export_recons_CheckBox.isChecked: self.write_reconstructions(results_path, reconstructed)
-        if self.export_diffs_CheckBox.isChecked: self.write_differences(results_path, reconstructed)
+        if self.export_recons_CheckBox.isChecked(): self.write_reconstructions(results_path, reconstructed)
+        if self.export_diffs_CheckBox.isChecked(): self.write_differences(results_path, reconstructed)
         if self.algorithmGroup.checkedButton().text()=="SNMF": self.write_stretch(results_path, stretch)
         print("Exporting results completed\n")
         return None

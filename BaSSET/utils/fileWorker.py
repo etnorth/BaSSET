@@ -58,7 +58,6 @@ def import_dataset(dir):
         x_data.append(x)
         y_data.append(y)
 
-    print("Dataset imported\n")
     return np.array(x_data), np.array(y_data)
 
 def import_scores(filename, compNum):

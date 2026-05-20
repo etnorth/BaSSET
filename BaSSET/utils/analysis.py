@@ -46,11 +46,14 @@ def NMF_analysis(intensities, numComponents, init, solver, beta_loss, tol, max_i
 
     return X, transformed, reconstructed, errors, lift_factor
 
-def ICA_analysis(intensities, numComponents, algorithm, whiten, fun, max_iter, tol, whiten_solver):
+def ICA_analysis(intensities, numComponents, algorithm, whiten, fun, max_iter, tol, whiten_solver, calc_err):
     ica = FastICA(n_components = numComponents, algorithm=algorithm, whiten=whiten, fun=fun, max_iter=max_iter, tol=tol, whiten_solver=whiten_solver)
     X = ica.fit(intensities)
     transformed = ica.transform(intensities)
     reconstructed = ica.inverse_transform(transformed)
+
+    if calc_err:
+        print(f"ICA does not return a numerical indication for goodness of fit")
 
     return X, transformed, reconstructed
 
