@@ -715,7 +715,7 @@ class MainWindow(qtw.QMainWindow):
         self.reconstruct_label = qtw.QLabel("Display Reconstruction Scan #")
         self.reconstruct_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
         self.reconstruct_label.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
-        self.recon_plot_layout.addWidget(self.reconstruct_label, 4,0,1,2)        
+        self.recon_plot_layout.addWidget(self.reconstruct_label, 4,0,1,2)
 
         self.reconstruct_widgets = []
 
@@ -804,7 +804,7 @@ class MainWindow(qtw.QMainWindow):
         self.file_submenu_recent_dirs.addAction(self.clear_recent_dirs_button)
 
         self.file_submenu_recent_bkgs = file_menu.addMenu("Recent backgrounds")
-        self.file_submenu_recent_bkgs_separator = self.file_submenu_recent_dirs.addSeparator()
+        self.file_submenu_recent_bkgs_separator = self.file_submenu_recent_bkgs.addSeparator()
 
         self.clear_recent_bkgs_button = qtg.QAction("Clear recently opened", self)
         self.clear_recent_bkgs_button.triggered.connect(lambda: [self.file_submenu_recent_bkgs.removeAction(action) for action in self.file_submenu_recent_bkgs.actions()[:-2]])
@@ -844,7 +844,7 @@ class MainWindow(qtw.QMainWindow):
         self.getbkgButton.clicked.connect(self.update_config_file)
         self.bkgScale_DSpinBox.valueChanged.connect(self.update_config_file)
         self.rmbkgButton.clicked.connect(lambda: self.bkgLabel.setText("Select a background for subtraction"))
-        self.indirButton.clicked.connect(self.update_config_file)
+        self.rmbkgButton.clicked.connect(self.update_config_file)
         self.inputformatGroup.buttonClicked.connect(self.update_config_file)
         self.convert2QCheckbox.clicked.connect(self.update_config_file)
         self.wavelengthWidget.valueChanged.connect(self.update_config_file)
@@ -911,7 +911,7 @@ class MainWindow(qtw.QMainWindow):
             if self.indirLabel.text() == "Select the folder containing your data files":
                 indir = str(qtw.QFileDialog.getExistingDirectory(self))
             else:
-                indir = str(qtw.QFileDialog.getExistingDirectory(self, directory=os.path.dirname(self.indirLabel.text())))
+                indir = str(qtw.QFileDialog.getExistingDirectory(self, directory=self.indirLabel.text()))
             if indir == "": # If the operation was cancelled
                 return None
 
@@ -930,17 +930,20 @@ class MainWindow(qtw.QMainWindow):
     def add_recentdir(self, recentdir):
         recentdir_button = qtg.QAction(recentdir, self)
         recentdir_button.triggered.connect(lambda: self.set_indir(recentdir_button.text()))
-        if recentdir in (action.text() for action in self.file_submenu_recent_dirs.actions()):
+
+        if recentdir in (action.text() for action in self.file_submenu_recent_dirs.actions()): # Removes duplicate occurence
             self.file_submenu_recent_dirs.removeAction(next(action for action in self.file_submenu_recent_dirs.actions() if action.text()==recentdir))
-        elif len(self.file_submenu_recent_dirs.actions()) >= 10+2:
+        elif len(self.file_submenu_recent_dirs.actions()) >= 10+2: # Deletes oldest recent if there are more than 10 
             self.file_submenu_recent_dirs.removeAction(self.file_submenu_recent_dirs.actions()[-3]) # -1 is "clear", -2 is separator, so -3 should be oldest "recent"
         self.file_submenu_recent_dirs.insertAction(self.file_submenu_recent_dirs.actions()[0], recentdir_button)
 
     def set_bkgfile(self, infile=None):
         if infile is None or infile is False: # Load background widget passes "False"
             if self.bkgLabel.text() == "Select a background for subtraction":
-                infile,_ = qtw.QFileDialog.getOpenFileName(self)
-                print(infile)
+                try:
+                    infile,_ = qtw.QFileDialog.getOpenFileName(self, directory=self.indirLabel.text())
+                except:
+                    infile,_ = qtw.QFileDialog.getOpenFileName(self)
             else:
                 infile,_ = qtw.QFileDialog.getOpenFileName(self, directory=os.path.dirname(self.bkgLabel.text()))
             if infile == "": # If the operation was cancelled
@@ -959,9 +962,10 @@ class MainWindow(qtw.QMainWindow):
     def add_recentbkg(self, recentbkg):
         recentbkg_button = qtg.QAction(recentbkg, self)
         recentbkg_button.triggered.connect(lambda: self.set_bkgfile(recentbkg_button.text()))
-        if recentbkg in (action.text() for action in self.file_submenu_recent_bkgs.actions()):
+
+        if recentbkg in (action.text() for action in self.file_submenu_recent_bkgs.actions()): # Removes duplicate occurence
             self.file_submenu_recent_bkgs.removeAction(next(action for action in self.file_submenu_recent_bkgs.actions() if action.text()==recentbkg))
-        elif len(self.file_submenu_recent_bkgs.actions()) >= 10+2:
+        elif len(self.file_submenu_recent_bkgs.actions()) >= 10+2: # Deletes oldest recent if there are more than 10 
             self.file_submenu_recent_bkgs.removeAction(self.file_submenu_recent_bkgs.actions()[-3]) # -1 is "clear", -2 is separator, so -3 should be oldest "recent"
         self.file_submenu_recent_bkgs.insertAction(self.file_submenu_recent_bkgs.actions()[0], recentbkg_button)
 
