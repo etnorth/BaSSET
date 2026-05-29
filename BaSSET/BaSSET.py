@@ -479,8 +479,8 @@ class MainWindow(qtw.QMainWindow):
         self.NMFalpha_WDSpinbox.setSingleStep(0.00005)
         self.algorithm_parameters_layout.addWidget(self.NMFalpha_WDSpinbox, 3,0)
         self.NMFalpha_WDSpinbox.setToolTip("[alpha_W]\n" \
-        "Constant that multiplies the regularization terms of the features:\n" \
-        "(Regularization a penalty term to constrain parameter complexity and reduce overfitting)\n" \
+        "Constant that multiplies the regularization terms of the mixing of features:\n" \
+        "(Regularization is a penalty term to constrain parameter complexity and reduce overfitting)\n" \
         "0 (default) means no regularization")
 
         self.NMFalpha_HDSpinbox = qtw.QDoubleSpinBox()
@@ -492,7 +492,7 @@ class MainWindow(qtw.QMainWindow):
         self.NMFalpha_HDSpinbox.setDisabled(True)
         self.algorithm_parameters_layout.addWidget(self.NMFalpha_HDSpinbox, 3,1)
         self.NMFalpha_HDSpinbox.setToolTip("[alpha_H]\n" \
-        "Constant that multiplies the regularization terms of the mixing of features:\n" \
+        "Constant that multiplies the regularization terms of the features:\n" \
         "0 means no regularization. By default same as alpha_W ")
 
         self.NMFalpha_HsameCheckbox = qtw.QCheckBox("same")
@@ -516,6 +516,11 @@ class MainWindow(qtw.QMainWindow):
             else None
         )
 
+        self.NMFrescale_CheckBox = qtw.QCheckBox("Rescale")
+        self.algorithm_parameters_layout.addWidget(self.NMFrescale_CheckBox, 2,2)
+        self.NMFrescale_CheckBox.setToolTip("Rescales scores to sum to 1")
+
+
         # Ignored NMF parmeters:
         # random_state
         # verbose
@@ -525,7 +530,7 @@ class MainWindow(qtw.QMainWindow):
                                     self.NMFmax_iterSpinbox, self.NMFtolSpinbox,
                                     self.NMFl1_ratioDSpinbox, self.NMFbeta_lossDropdown,
                                     self.NMFalpha_WDSpinbox, self.NMFalpha_HDSpinbox,
-                                    self.NMFalpha_HsameCheckbox]
+                                    self.NMFalpha_HsameCheckbox, self.NMFrescale_CheckBox]
         
         ##########################
         ##### ICA parameters #####
@@ -631,7 +636,7 @@ class MainWindow(qtw.QMainWindow):
         #self.SNMFeta_DSpinbox.setMaximum(10)
         #self.SNMFeta_DSpinbox.setSingleStep(0.00005)
         self.algorithm_parameters_layout.addWidget(self.SNMFeta_DSpinbox, 3,1)
-        self.SNMFeta_DSpinbox.setToolTip("[rho]\n" \
+        self.SNMFeta_DSpinbox.setToolTip("[eta]\n" \
         "Sparsity factor. Should be set to zero (default) for non-sparse data such as PDF.\n" \
         "Can be used to improve results for sparse data such as XRD,\nbut due to instability should be used only faster selecting the best value for rho.\n" \
         "Suggested adjustment is by powers of 2")
@@ -875,7 +880,7 @@ class MainWindow(qtw.QMainWindow):
                        self.NMFalgorithmWidgets +
                        self.ICAalgorithmWidgets +
                        self.SNMFalgorithmWidgets):
-                    widget.hide()
+            widget.hide()
         match self.algorithmGroup.checkedButton().text():
             case "PCA":
                 """for widget in self.PCAalgorithmWidgets:
@@ -1187,7 +1192,8 @@ class MainWindow(qtw.QMainWindow):
                     alpha_W=self.NMFalpha_WDSpinbox.value(),
                     alpha_H='same' if self.NMFalpha_HsameCheckbox.isChecked() else self.NMFalpha_HDSpinbox.value(),
                     l1_ratio=self.NMFl1_ratioDSpinbox.value(),
-                    calc_err=self.calc_err_CheckBox.isChecked()
+                    calc_err=self.calc_err_CheckBox.isChecked(),
+                    rescale=self.NMFrescale_CheckBox.isChecked()
                 )
             case "ICA":
                 fitted, transformed, reconstructed = analysis.ICA_analysis(
@@ -1214,37 +1220,13 @@ class MainWindow(qtw.QMainWindow):
                 )
 
         print("Analysis completed\n")
-        self.plot_analysis(numComponents, fitted, transformed, reconstructed, errors, lift_factor, stretch)
+        self.plot_analysis(numComponents, angles, intensities, fitted, transformed, reconstructed, errors, lift_factor, stretch)
 
-    def plot_analysis(self, numComponents, fitted, transformed, reconstructed, errors=None, lift_factor=None, stretch=None):
+    def plot_analysis(self, numComponents, angles, intensities, fitted, transformed, reconstructed, errors=None, lift_factor=None, stretch=None):
         if self.convert2QCheckbox.isChecked():
             xlabel = "Q [Å⁻¹]"
-            angles = funcs.theta_to_Q(self.angles, self.wavelengthWidget.value())
         else:
-            angles = self.angles.copy()
             xlabel = self.inputformatGroup.checkedButton().text()
-
-        intensities = self.intensities.copy()
-
-        if self.bkgLabel.text() != "Select a background for subtraction":
-            try:
-                _, bkgintensity = fileWorker.import_data(self.bkgLabel.text())
-            except:
-                print("! Could not read background. Fix/remove background and try again")
-                return None
-            try:
-                for i, intensity in enumerate(intensities):
-                    intensities[i] = intensity - bkgintensity*self.bkgScale_DSpinBox.value()
-            except:
-                print("! Could not subtract background from data. Fix/remove background and try again")
-                return None
-            
-        if self.plot_xmin_DSpinBox.value() != self.plot_xmax_DSpinBox.value(): # Crop according to converted data
-            xmin_index = np.searchsorted(angles[0], self.plot_xmin_DSpinBox.value(), side='left')
-            xmax_index = np.searchsorted(angles[0], self.plot_xmax_DSpinBox.value(), side='right')
-            angles = angles[:,xmin_index:xmax_index] # Cut unconverted data for later
-            intensities = intensities[:,xmin_index:xmax_index]
-
 
         reconNum = []
         for widget in self.reconstruct_widgets:
@@ -1314,10 +1296,15 @@ class MainWindow(qtw.QMainWindow):
         ax_scores.legend()
         l, h = ax_recon.get_legend_handles_labels()
         ax_errors.legend(l, h, title="↑", frameon=True)
-        ax_scores.set_title("Scores")
         ax_scores.set_xlabel("Scan #")
         ax_scores.set_xlim(1, len(angles))
-        ax_scores.set_ylim(min(0,np.min(transformed)), np.max(transformed))
+        
+        if self.NMFrescale_CheckBox.isChecked() and self.algorithmGroup.checkedButton().text()=="NMF":
+            ax_scores.set_title("Normalized Scores")
+            ax_scores.set_ylim(min(0,np.min(transformed)), 1)
+        else:
+            ax_scores.set_title("Scores")
+            ax_scores.set_ylim(min(0,np.min(transformed)), np.max(transformed))
 
         match self.algorithmGroup.checkedButton().text():
             case "PCA":
@@ -1330,7 +1317,7 @@ class MainWindow(qtw.QMainWindow):
             case "ICA":
                 pass
             case "SNMF":
-                print(f"SNMF reconstruction error calculation is disabled due to slow convergence")
+                pass
                 """
                 ax_errors.plot(np.arange(1, min(10,min(np.shape(intensities)))+1), errors, "ko--")
                 ax_errors.set_title("Reconstruction error (Not Implemented)")
@@ -1341,7 +1328,7 @@ class MainWindow(qtw.QMainWindow):
 
         ax_errors.set_xlabel("# of Components")
 
-        fig.canvas.manager.set_window_title(f"{numComponents} component {self.algorithmGroup.checkedButton().text()} on {self.indirLabel.text().split('/')[-1]}")
+        fig.canvas.manager.set_window_title(f"{self.algorithmGroup.checkedButton().text()} ({numComponents}): x:({self.plot_xmin_DSpinBox.value()},{self.plot_xmax_DSpinBox.value()})")
 
         # Maximize window
         manager = plt.get_current_fig_manager()
@@ -1355,13 +1342,13 @@ class MainWindow(qtw.QMainWindow):
 
         fig.show()
 
-        if self.export_results_CheckBox.isChecked(): self.export_results(fitted, transformed, reconstructed, fig, errors, lift_factor, stretch)
+        if self.export_results_CheckBox.isChecked(): self.export_results(angles, intensities, fitted, transformed, reconstructed, fig, errors, lift_factor, stretch)
         return None
 
     def write_summary(self, results_path, errors=None, lift_factor=None):
         with open(f"{results_path}/summary.txt", "w", encoding='utf-8') as outfile:
             outfile.write(f"Summary of {self.numComponentsSlider.value()} component {self.algorithmGroup.checkedButton().text()} analysis of data in \"...{self.indirLabel.text()[-51:]}\"\n\n")
-            outfile.write(f"Data was analyzed from {self.plot_xmin_DSpinBox.value()} to {self.plot_xmax_DSpinBox.value()} {self.inputformatGroup.checkedButton().text()}")
+            outfile.write(f"Data was analyzed from {self.plot_xmin_DSpinBox.value()} to {self.plot_xmax_DSpinBox.value()} {self.inputformatGroup.checkedButton().text()}\n")
             outfile.write("The following algorithm parameters where used:\n")
             match self.algorithmGroup.checkedButton().text():
                 case "PCA":
@@ -1382,8 +1369,9 @@ class MainWindow(qtw.QMainWindow):
                     outfile.write(f"Regularization constant for features: {self.NMFalpha_WDSpinbox.value()}\n")
                     outfile.write(f"Regularization constant for samples: {self.NMFalpha_HDSpinbox.value()}\n") # Should work even if alpha_Hsame=True
                     outfile.write(f"Regularization mixing parameter (0=l2, 1=l1): {self.NMFl1_ratioDSpinbox.value()}\n")
-                    if errors is not None: outfile.write(f"\nThe NMF reconstruction error for {self.numComponentsSlider.value()} components was: {errors[self.numComponentsSlider.value()+1]:.2f}\n")
                     if lift_factor<0: outfile.write(f"Due to negative values, your dataset was lifted by {lift_factor} during analysis, before subsequent lowering\n")
+                    if self.NMFrescale_CheckBox: outfile.write(f"Scores were rescaled to sum to 1\n")
+                    if errors is not None: outfile.write(f"\nThe NMF reconstruction error for {self.numComponentsSlider.value()} components was: {errors[self.numComponentsSlider.value()+1]:.2f}\n")
                 case "ICA":
                     outfile.write(f"Algorithm: {self.ICAalgorithmDropdown.currentText()}\n")
                     outfile.write(f"Whitening strategy: {self.ICAwhitenDropdown.currentText()}\n")
@@ -1400,23 +1388,23 @@ class MainWindow(qtw.QMainWindow):
         print("Summary written")
         return None
 
-    def write_components(self, results_path, fitted):
+    def write_components(self, angles, results_path, fitted):
         os.mkdir(f"{results_path}/components")
         for i, component in enumerate(fitted.components_):
             with open(f"{results_path}/components/component_{i+1:02}.xy", "w") as outfile:
-                for j in range(len(self.angles[i])):
-                    outfile.write(f"{self.angles[i][j]}\t{component[j]}\n")
+                for j in range(len(angles[i])):
+                    outfile.write(f"{angles[i][j]}\t{component[j]}\n")
         print("Components written")
         return None
 
-    def write_compContribute(self, results_path, fitted, transformed):
+    def write_compContribute(self, angles, results_path, fitted, transformed):
         os.mkdir(f"{results_path}/component_contributions")
         for compNum, component in enumerate(fitted.components_):
             os.mkdir(f"{results_path}/component_contributions/component_{compNum+1:02}")
             for i in range(len(transformed)): # Number of scans
                 with open(f"{results_path}/component_contributions/component_{compNum+1:02}/c{compNum+1:02}_contribution_scan_{i}.xy", "w") as outfile:
-                    for j in range(len(self.angles[compNum])): # Index in scan 
-                        outfile.write(f"{self.angles[i][j]}\t{component[j]*transformed[i][compNum]}\n") # Component multiplied by its scoring at that scan number
+                    for j in range(len(angles[compNum])): # Index in scan 
+                        outfile.write(f"{angles[i][j]}\t{component[j]*transformed[i][compNum]}\n") # Component multiplied by its scoring at that scan number
         print(f"Component contributions written")
         return None
 
@@ -1433,28 +1421,40 @@ class MainWindow(qtw.QMainWindow):
         print("Scores written")
         return None
 
-    def write_reconstructions(self, results_path, reconstructed):
+    def write_reconstructions(self, angles, results_path, reconstructed):
         os.mkdir(f"{results_path}/reconstructions")
         for i in range(len(reconstructed)):
             with open(f"{results_path}/reconstructions/recon_scan_{i+1:04}.xy", "w") as outfile:
-                for j in range(len(self.angles[i])):
-                    outfile.write(f"{self.angles[i][j]}\t{reconstructed[i][j]}\n")
+                for j in range(len(angles[i])):
+                    outfile.write(f"{angles[i][j]}\t{reconstructed[i][j]}\n")
         print("Reconstructions written")
         return None
     
-    def write_differences(self, results_path, reconstructed):
+    def write_differences(self, angles, intensities, results_path, reconstructed):
         os.mkdir(f"{results_path}/differences")
         for i in range(len(reconstructed)):
             with open(f"{results_path}/differences/diff_scan_{i+1:04}.xy", "w") as outfile:
-                for j in range(len(self.angles[i])):
-                    outfile.write(f"{self.angles[i][j]}\t{self.intensities[i][j]-reconstructed[i][j]}\n")
+                for j in range(len(angles[i])):
+                    outfile.write(f"{angles[i][j]}\t{intensities[i][j]-reconstructed[i][j]}\n")
         print("Differences written")
         return None
 
     def write_stretch(self, results_path, stretch):
-        NotImplemented
+        with open(f"{results_path}/stretch.csv", "w") as outfile:
+            for i in range(self.numComponentsSlider.value()-1):
+                outfile.write(f"Component {i+1:02},")
+            outfile.write(f"Component {self.numComponentsSlider.value():02}\n")
 
-    def export_results(self, fitted, transformed, reconstructed, fig=None, errors=None, lift_factor=None, stretch=None):
+            for i in range(len(stretch)):
+                for j in range(len(stretch[0])-1):
+                    outfile.write(f"{stretch[i][j]},")
+                outfile.write(f"{stretch[i][len(stretch[0])-1]}\n")
+        print("Stretch written")
+        return None
+
+        print(stretch.shape)
+
+    def export_results(self, angles, intensities, fitted, transformed, reconstructed, fig=None, errors=None, lift_factor=None, stretch=None):
         print("Exporting results")
         if not os.path.exists(f"{self.indirLabel.text()}/BaSSET_results"):
             os.mkdir(f"{self.indirLabel.text()}/BaSSET_results")
@@ -1466,11 +1466,11 @@ class MainWindow(qtw.QMainWindow):
         if fig!=None:
             fig.savefig(f"{results_path}/overview.jpg")
         self.write_summary(results_path, errors, lift_factor)
-        self.write_components(results_path, fitted)
-        if self.export_compContribute_CheckBox.isChecked(): self.write_compContribute(results_path, fitted, transformed)
+        self.write_components(angles, results_path, fitted)
+        if self.export_compContribute_CheckBox.isChecked(): self.write_compContribute(angles, results_path, fitted, transformed)
         self.write_scores(results_path, transformed)
-        if self.export_recons_CheckBox.isChecked(): self.write_reconstructions(results_path, reconstructed)
-        if self.export_diffs_CheckBox.isChecked(): self.write_differences(results_path, reconstructed)
+        if self.export_recons_CheckBox.isChecked(): self.write_reconstructions(angles, results_path, reconstructed)
+        if self.export_diffs_CheckBox.isChecked(): self.write_differences(angles, intensities, results_path, reconstructed)
         if self.algorithmGroup.checkedButton().text()=="SNMF": self.write_stretch(results_path, stretch)
         print("Exporting results completed\n")
         return None

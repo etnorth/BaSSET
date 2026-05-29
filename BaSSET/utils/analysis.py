@@ -1,6 +1,6 @@
 import numpy as np
 from sklearn.decomposition import PCA, NMF, FastICA
-from diffpy.stretched_nmf.snmf_class import SNMFOptimizer
+from diffpy.stretched_nmf.snmf_class import SNMFOptimizer, _reconstruct_matrix
 
 
 def PCA_analysis(intensities, numComponents, whiten, svd_solver, tol, iterated_power, n_oversamples, power_iteration_normalizer):
@@ -12,7 +12,7 @@ def PCA_analysis(intensities, numComponents, whiten, svd_solver, tol, iterated_p
 
     return X, transformed, reconstructed
 
-def NMF_analysis(intensities, numComponents, init, solver, beta_loss, tol, max_iter, alpha_W, alpha_H, l1_ratio, calc_err):
+def NMF_analysis(intensities, numComponents, init, solver, beta_loss, tol, max_iter, alpha_W, alpha_H, l1_ratio, calc_err, rescale):    
     lift_factor = intensities.min()
     if lift_factor < 0:
         intensities -= lift_factor
@@ -44,6 +44,12 @@ def NMF_analysis(intensities, numComponents, init, solver, beta_loss, tol, max_i
         X.components_ += lift_factor
         reconstructed += lift_factor
 
+    if rescale:
+        print("Rescaling scores")
+        row_sums = np.sum(transformed, axis=1, keepdims=True) # Sums scores
+        transformed = transformed / row_sums * 1 # Rescales scores so they sum to one
+        #X.components_ = row_sums * X.components_ # Rescales components so the resulting matrix multiplication is the same (dimensional mismatch fail)
+
     return X, transformed, reconstructed, errors, lift_factor
 
 def ICA_analysis(intensities, numComponents, algorithm, whiten, fun, max_iter, tol, whiten_solver, calc_err):
@@ -60,6 +66,9 @@ def ICA_analysis(intensities, numComponents, algorithm, whiten, fun, max_iter, t
 def SNMF_analysis(intensities, numComponents, min_iter, max_iter, tol, rho, eta, calc_err):
     # SNMF automatically handles lifts negative values, so no if-case needed
     calc_err=False
+    print(f"SNMF reconstruction error calculation is disabled due to slow convergence")
+
+    intensities = intensities.T # SNMF wants (n_features,n_samples) instead of sklearn's (n_samples,n_features)
 
     if calc_err:
         n_components_list = np.arange(1, min(10,min(np.shape(intensities)))+1, dtype=int)
@@ -81,7 +90,13 @@ def SNMF_analysis(intensities, numComponents, min_iter, max_iter, tol, rho, eta,
         X = snmf.fit(intensities)
         transformed = snmf.weights_
         stretch = snmf.stretch_
-        reconstructed = snmf.reconstruct_matrix(snmf.components_, transformed, stretch)
+        reconstructed = _reconstruct_matrix(snmf.components_, transformed, stretch)
         print(f"    NMF ({numComponents}) reconstruction error: {X.reconstruction_err_:10f}")
+
+        # Transpose to match sklearn
+        X.components_ = X.components_.T
+        transformed = transformed.T
+        stretch = stretch.T
+        reconstructed = reconstructed.T # Transpose results to be in line with sklearn standard
 
     return X, transformed, reconstructed, errors, stretch
