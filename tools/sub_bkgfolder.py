@@ -11,10 +11,10 @@ from basset.utils.fileWorker import (
 from natsort import natsorted
 import numpy as np
 
-DATASET_DIR        = r"C:\Users\izarc\20240316_1445_time_sliced"
-SCORES_FILEPATH    = r"C:\Users\erlendtn\OneDrive - Universitetet i Oslo\Eira PhD\Articles\4 BaSSET\data\NaBi battery\XRD\generated_realistic\output_files\BaSSET_results\260511-151551_NMF_4\scores.csv"
-COMPONENT_FILEPATH = r"C:\Users\erlendtn\OneDrive - Universitetet i Oslo\Eira PhD\Articles\4 BaSSET\data\NaBi battery\XRD\generated_realistic\output_files\BaSSET_results\260511-151551_NMF_4\components\component_01.xy"
-COMPONENT_DIR      = r"C:\Users\izarc\20240316_1445_time_sliced\BaSSET_results\260511-170130_NMF_2\reconstructions"
+DATASET_DIR        = r"" # Directory containing dataset for subtraction
+SCORES_FILEPATH    = r"" # Full filepath to scores.csv
+COMPONENT_FILEPATH = r"" # Full filepath to your single component for subtraction
+COMPONENT_DIR      = r"" # Directory containing an equal number of files of equal length to dataset (e.g. partial reconstruction from BaSSET export)
 
 FILE_OR_DIR        = 'dir' # 'file' or 'dir'
 

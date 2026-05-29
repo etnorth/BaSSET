@@ -10,3 +10,4 @@ dist*
 
 # BaSSET Specific
 BaSSET/config.dat
+pypi_API_token.txt

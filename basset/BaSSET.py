@@ -1522,7 +1522,6 @@ class AboutDialog(qtw.QDialog):
 
 
 def main():
-    print("Starting BaSSET...\n")
     app = qtw.QApplication(sys.argv)
 
     window = MainWindow()
