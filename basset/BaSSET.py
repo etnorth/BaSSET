@@ -258,6 +258,16 @@ class MainWindow(qtw.QMainWindow):
         self.calc_err_CheckBox.setChecked(True)
         self.calc_err_CheckBox.setToolTip("Calculates errors for 1 to 10 components")
         self.algorithm_layout.addWidget(self.calc_err_CheckBox, 2,1)
+        self.algorithmGroup.buttonClicked.connect(
+            lambda button: self.calc_err_CheckBox.setDisabled(True)
+            if button==self.SNMFButton
+            else self.calc_err_CheckBox.setEnabled(True)
+        )
+        self.algorithmGroup.buttonClicked.connect(
+            lambda button: self.calc_err_CheckBox.setChecked(False)
+            if button==self.SNMFButton
+            else None
+        )
 
         self.algorithmGroup.addButton(self.PCAButton)
         self.algorithmGroup.addButton(self.NMFButton)
@@ -851,8 +861,11 @@ class MainWindow(qtw.QMainWindow):
         self.rmbkgButton.clicked.connect(lambda: self.bkgLabel.setText("Select a background for subtraction"))
         self.rmbkgButton.clicked.connect(self.update_config_file)
         self.inputformatGroup.buttonClicked.connect(self.update_config_file)
+        self.inputformatGroup.buttonClicked.connect(self.set_xrange)
         self.convert2QCheckbox.clicked.connect(self.update_config_file)
+        self.convert2QCheckbox.clicked.connect(self.set_xrange)
         self.wavelengthWidget.valueChanged.connect(self.update_config_file)
+        self.wavelengthWidget.valueChanged.connect(self.set_xrange)
         self.plot_xmin_DSpinBox.valueChanged.connect(self.update_config_file)
         self.plot_xmax_DSpinBox.valueChanged.connect(self.update_config_file)
         self.plotDataButton.clicked.connect(self.plot_dataset)
@@ -926,8 +939,7 @@ class MainWindow(qtw.QMainWindow):
         except:
             print(f"An error occured when loading ...{'/'.join(indir.split("/")[-3:])}")
         else:
-            self.plot_xmin_DSpinBox.setValue(np.min(self.angles))
-            self.plot_xmax_DSpinBox.setValue(np.max(self.angles))
+            self.set_xrange(new=True)
             self.indirLabel.setText(indir)
             self.add_recentdir(indir)
             print("Dataset imported\n")
@@ -974,6 +986,26 @@ class MainWindow(qtw.QMainWindow):
             self.file_submenu_recent_bkgs.removeAction(self.file_submenu_recent_bkgs.actions()[-3]) # -1 is "clear", -2 is separator, so -3 should be oldest "recent"
         self.file_submenu_recent_bkgs.insertAction(self.file_submenu_recent_bkgs.actions()[0], recentbkg_button)
 
+    def set_xrange(self, new=False):
+        if self.convert2QCheckbox.isChecked():
+            min = funcs.theta_to_Q(np.min(self.angles),self.wavelengthWidget.value())
+            max = funcs.theta_to_Q(np.max(self.angles),self.wavelengthWidget.value())
+        else:
+            min = np.min(self.angles)
+            max = np.max(self.angles)
+
+        self.plot_xmin_DSpinBox.setMinimum(min)
+        self.plot_xmin_DSpinBox.setMaximum(max)
+        self.plot_xmax_DSpinBox.setMinimum(min)
+        self.plot_xmax_DSpinBox.setMaximum(max)
+
+        if new:
+            self.plot_xmin_DSpinBox.setValue(self.plot_xmin_DSpinBox.minimum())
+            self.plot_xmax_DSpinBox.setValue(self.plot_xmax_DSpinBox.maximum())
+        
+        for widget in self.reconstruct_widgets:
+            widget.setMaximum(len(self.angles))
+
     def read_config_file(self):
         with open(self.configfile, encoding='utf-8') as infile:
             lines = infile.readlines()
@@ -985,7 +1017,11 @@ class MainWindow(qtw.QMainWindow):
                 if value != "":
                     match name:
                         case "Current file directory":
-                            self.indirLabel.setText(value)
+                            if os.path.exists(value):
+                                self.indirLabel.setText(value)
+                                self.set_indir(value)
+                            else:
+                                print(f"{value} is not a valid directory")
                         case "Recent directories":
                             for dir in reversed(value.split(", ")):
                                 if dir != "":
@@ -1301,7 +1337,7 @@ class MainWindow(qtw.QMainWindow):
         
         if self.NMFrescale_CheckBox.isChecked() and self.algorithmGroup.checkedButton().text()=="NMF":
             ax_scores.set_title("Normalized Scores")
-            ax_scores.set_ylim(min(0,np.min(transformed)), 1)
+            ax_scores.set_ylim(-0.01, 1.01)
         else:
             ax_scores.set_title("Scores")
             ax_scores.set_ylim(min(0,np.min(transformed)), np.max(transformed))
@@ -1385,6 +1421,7 @@ class MainWindow(qtw.QMainWindow):
                     outfile.write(f"Tolerance: {self.SNMFtol_SciSpinbox.value()}\n")
                     outfile.write(f"Stretching factor: {self.SNMFrho_SciSpinbox.value()}\n")
                     outfile.write(f"Sparsity factor: {self.SNMFeta_DSpinbox.value()}\n")
+                    outfile.write(f"! Be aware that stretching uses division, not multiplication (component / stretch) !")
         print("Summary written")
         return None
 
@@ -1397,14 +1434,24 @@ class MainWindow(qtw.QMainWindow):
         print("Components written")
         return None
 
-    def write_compContribute(self, angles, results_path, fitted, transformed):
+    def write_compContribute(self, angles, results_path, fitted, transformed, stretch=None):
         os.mkdir(f"{results_path}/component_contributions")
-        for compNum, component in enumerate(fitted.components_):
-            os.mkdir(f"{results_path}/component_contributions/component_{compNum+1:02}")
-            for i in range(len(transformed)): # Number of scans
-                with open(f"{results_path}/component_contributions/component_{compNum+1:02}/c{compNum+1:02}_contribution_scan_{i}.xy", "w") as outfile:
-                    for j in range(len(angles[compNum])): # Index in scan 
-                        outfile.write(f"{angles[i][j]}\t{component[j]*transformed[i][compNum]}\n") # Component multiplied by its scoring at that scan number
+
+        if stretch is not None:
+            for compNum, component in enumerate(fitted.components_):
+                os.mkdir(f"{results_path}/component_contributions/component_{compNum+1:02}")
+                for i in range(len(transformed)): # Number of scans
+                    with open(f"{results_path}/component_contributions/component_{compNum+1:02}/c{compNum+1:02}_contribution_scan_{i}.xy", "w") as outfile:
+                        for j in range(len(angles[compNum])): # Index in scan 
+                            outfile.write(f"{angles[i][j]/stretch[i][compNum]}\t{component[j]*transformed[i][compNum]}\n") # Component multiplied by its scoring at that scan number
+        else:
+            for compNum, component in enumerate(fitted.components_):
+                os.mkdir(f"{results_path}/component_contributions/component_{compNum+1:02}")
+                for i in range(len(transformed)): # Number of scans
+                    with open(f"{results_path}/component_contributions/component_{compNum+1:02}/c{compNum+1:02}_contribution_scan_{i}.xy", "w") as outfile:
+                        for j in range(len(angles[compNum])): # Index in scan 
+                            outfile.write(f"{angles[i][j]}\t{component[j]*transformed[i][compNum]}\n") # Component multiplied by its scoring at that scan number
+            
         print(f"Component contributions written")
         return None
 
@@ -1467,7 +1514,7 @@ class MainWindow(qtw.QMainWindow):
             fig.savefig(f"{results_path}/overview.jpg")
         self.write_summary(results_path, errors, lift_factor)
         self.write_components(angles, results_path, fitted)
-        if self.export_compContribute_CheckBox.isChecked(): self.write_compContribute(angles, results_path, fitted, transformed)
+        if self.export_compContribute_CheckBox.isChecked(): self.write_compContribute(angles, results_path, fitted, transformed, stretch)
         self.write_scores(results_path, transformed)
         if self.export_recons_CheckBox.isChecked(): self.write_reconstructions(angles, results_path, reconstructed)
         if self.export_diffs_CheckBox.isChecked(): self.write_differences(angles, intensities, results_path, reconstructed)
@@ -1493,11 +1540,9 @@ class AboutDialog(qtw.QDialog):
         self.logo.setAlignment(qtc.Qt.AlignmentFlag.AlignTop | qtc.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.logo)
 
-        """
-        self.version = qtw.QLabel("Version: ALPHA_DEV")
-        self.version.setAlignment(qtc.Qt.AlignCenter)
+        self.version = qtw.QLabel("Version: 1.3.3a")
+        self.version.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.version)
-        """
 
         self.company = qtw.QLabel("Developed at NAFUMA Battery - University of Oslo")
         self.company.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)

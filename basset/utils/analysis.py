@@ -65,7 +65,6 @@ def ICA_analysis(intensities, numComponents, algorithm, whiten, fun, max_iter, t
 
 def SNMF_analysis(intensities, numComponents, min_iter, max_iter, tol, rho, eta, calc_err):
     # SNMF automatically handles lifts negative values, so no if-case needed
-    calc_err=False
     print(f"SNMF reconstruction error calculation is disabled due to slow convergence")
 
     intensities = intensities.T # SNMF wants (n_features,n_samples) instead of sklearn's (n_samples,n_features)
@@ -93,10 +92,10 @@ def SNMF_analysis(intensities, numComponents, min_iter, max_iter, tol, rho, eta,
         reconstructed = _reconstruct_matrix(snmf.components_, transformed, stretch)
         print(f"    NMF ({numComponents}) reconstruction error: {X.reconstruction_err_:10f}")
 
-        # Transpose to match sklearn
-        X.components_ = X.components_.T
-        transformed = transformed.T
-        stretch = stretch.T
-        reconstructed = reconstructed.T # Transpose results to be in line with sklearn standard
+    # Transpose to match sklearn
+    X.components_ = X.components_.T
+    transformed = transformed.T
+    stretch = stretch.T
+    reconstructed = reconstructed.T # Transpose results to be in line with sklearn standard
 
     return X, transformed, reconstructed, errors, stretch
