@@ -1,10 +1,14 @@
+"""
+BaSSET GUI module
+"""
+
 import sys
 import os
 from datetime import datetime
 
 from basset.utils import (
     analysis,
-    fileWorker,
+    file_worker,
     funcs
 )
 
@@ -19,7 +23,7 @@ import platform
 if platform.system() == "Windows":
     # Separates BaSSET from the "Pythonw.exe" ID so it can have its own tackbar icon
     import ctypes
-    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID(u"UiO.BaSSET")
+    ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("UiO.BaSSET")
 
 plt.rcParams.update({
     #"font.family": "Arial",
@@ -48,6 +52,9 @@ plt.rcParams.update({
 
 
 class SciSpinBox(qtw.QDoubleSpinBox):
+    """
+    Modification of Qt's DoubleSpinBox, but using scientific notation
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.setMinimum(-np.inf)
@@ -57,24 +64,39 @@ class SciSpinBox(qtw.QDoubleSpinBox):
         self.multiplier = 10
 
     def textFromValue(self, value):
-        return "{:.2e}".format(value)
-    
+        """
+        Converts float into two-decimal scientific notated text
+        """
+        return f"{value:.2e}"
+
     def valueFromText(self, text):
+        """
+        Converts text to float
+        """
         try:
             return float(text)
         except ValueError:
             return self.value()
 
     def validate(self, text, pos):
+        """
+        Validates user input as acceptable
+        """
         return qtg.QDoubleValidator.State.Acceptable, text, pos
-    
+
     def stepBy(self, steps):
+        """
+        Changes arroe behavior to step exponent rather than mantissa
+        """
         if steps > 0:
             self.setValue(self.value() * self.multiplier)
         else:
             self.setValue(self.value() / self.multiplier)
 
 class MainWindow(qtw.QMainWindow):
+    """
+    Main BaSSET GUI window 
+    """
     def __init__(self):
         super().__init__()
 
@@ -98,101 +120,101 @@ class MainWindow(qtw.QMainWindow):
         self.input_format_layout = qtw.QGridLayout()
         self.grid.addLayout(self.input_format_layout, 0,0,2,1)
 
-        self.inputformatTitle = qtw.QLabel("Input format")
-        self.inputformatTitle.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
-        self.inputformatTitle.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
-        self.input_format_layout.addWidget(self.inputformatTitle, 0,0,1,3)
+        self.input_format_title = qtw.QLabel("Input format")
+        self.input_format_title.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
+        self.input_format_title.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
+        self.input_format_layout.addWidget(self.input_format_title, 0,0,1,3)
 
-        self.inputformatGroup = qtw.QButtonGroup()
-        self.thetaButton = qtw.QRadioButton("2θ [°]")
-        self.inputformatGroup.addButton(self.thetaButton)
-        self.input_format_layout.addWidget(self.thetaButton, 1,0)
+        self.input_format_group = qtw.QButtonGroup()
+        self.theta_button = qtw.QRadioButton("2θ [°]")
+        self.input_format_group.addButton(self.theta_button)
+        self.input_format_layout.addWidget(self.theta_button, 1,0)
 
-        self.qButton = qtw.QRadioButton("Q [Å⁻¹]")
-        self.qButton.setChecked(True)
-        self.inputformatGroup.addButton(self.qButton)
-        self.input_format_layout.addWidget(self.qButton, 1,1)
+        self.q_button = qtw.QRadioButton("Q [Å⁻¹]")
+        self.q_button.setChecked(True)
+        self.input_format_group.addButton(self.q_button)
+        self.input_format_layout.addWidget(self.q_button, 1,1)
 
-        self.rButton = qtw.QRadioButton("r [Å]")
-        self.inputformatGroup.addButton(self.rButton)
-        self.input_format_layout.addWidget(self.rButton, 1,2)
+        self.r_button = qtw.QRadioButton("r [Å]")
+        self.input_format_group.addButton(self.r_button)
+        self.input_format_layout.addWidget(self.r_button, 1,2)
 
         self.indir_options_layout = qtw.QHBoxLayout()
         self.input_format_layout.addLayout(self.indir_options_layout, 2,0,1,3)
 
-        self.convert2QCheckbox = qtw.QCheckBox("Convert to Q")
-        self.convert2QCheckbox.setToolTip("Uses supplied wavelength to display data in Q [Å⁻¹]")
-        self.indir_options_layout.addWidget(self.convert2QCheckbox)
-        self.inputformatGroup.buttonClicked.connect(
-            lambda button: self.convert2QCheckbox.setEnabled(True)
-            if button==self.thetaButton
-            else self.convert2QCheckbox.setDisabled(True)
+        self.convert_to_q_checkbox = qtw.QCheckBox("Convert to Q")
+        self.convert_to_q_checkbox.setToolTip("Uses supplied wavelength to display data in Q [Å⁻¹]")
+        self.indir_options_layout.addWidget(self.convert_to_q_checkbox)
+        self.input_format_group.buttonClicked.connect(
+            lambda button: self.convert_to_q_checkbox.setEnabled(True)
+            if button==self.theta_button
+            else self.convert_to_q_checkbox.setDisabled(True)
         )
-        self.rButton.clicked.connect(lambda: self.convert2QCheckbox.setChecked(False))
+        self.r_button.clicked.connect(lambda: self.convert_to_q_checkbox.setChecked(False))
 
-        self.wavelengthWidget = qtw.QDoubleSpinBox(decimals=6)
-        self.wavelengthWidget.setMinimum(0)
-        self.wavelengthWidget.setSingleStep(0.000001)
-        self.wavelengthWidget.setSuffix(' Å')
-        self.wavelengthWidget.setValue(1.540598)
-        self.wavelengthWidget.setButtonSymbols(qtw.QAbstractSpinBox.ButtonSymbols.NoButtons)
-        self.indir_options_layout.addWidget(self.wavelengthWidget)
-        self.inputformatGroup.buttonClicked.connect(
-            lambda button: self.wavelengthWidget.setEnabled(True)
-            if button==self.thetaButton
-            else self.wavelengthWidget.setDisabled(True)
+        self.wavelength_widget = qtw.QDoubleSpinBox(decimals=6)
+        self.wavelength_widget.setMinimum(0)
+        self.wavelength_widget.setSingleStep(0.000001)
+        self.wavelength_widget.setSuffix(' Å')
+        self.wavelength_widget.setValue(1.540598)
+        self.wavelength_widget.setButtonSymbols(qtw.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.indir_options_layout.addWidget(self.wavelength_widget)
+        self.input_format_group.buttonClicked.connect(
+            lambda button: self.wavelength_widget.setEnabled(True)
+            if button==self.theta_button
+            else self.wavelength_widget.setDisabled(True)
         )
-        self.inputformatGroup.buttonClicked.connect(
-            lambda button: self.convert2QCheckbox.setChecked(False)
-            if button!=self.thetaButton
+        self.input_format_group.buttonClicked.connect(
+            lambda button: self.convert_to_q_checkbox.setChecked(False)
+            if button!=self.theta_button
             else None
         )
 
         self.indir_layout = qtw.QHBoxLayout()
         self.grid.addLayout(self.indir_layout, 0,1,1,2)
 
-        self.indirLabel = qtw.QLabel("Select the folder containing your dataset")
-        self.indirLabel.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
-        self.indirLabel.setMinimumWidth(350)
-        self.indirLabel.setSizePolicy(qtw.QSizePolicy.Policy.Preferred, qtw.QSizePolicy.Policy.Fixed)
-        self.indirLabel.setFrameShape(qtw.QFrame.Shape.Panel)
-        self.indirLabel.setFrameShadow(qtw.QFrame.Shadow.Sunken)
-        self.indir_layout.addWidget(self.indirLabel)
+        self.indir_label = qtw.QLabel("Select the folder containing your dataset")
+        self.indir_label.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
+        self.indir_label.setMinimumWidth(350)
+        self.indir_label.setSizePolicy(qtw.QSizePolicy.Policy.Preferred, qtw.QSizePolicy.Policy.Fixed)
+        self.indir_label.setFrameShape(qtw.QFrame.Shape.Panel)
+        self.indir_label.setFrameShadow(qtw.QFrame.Shadow.Sunken)
+        self.indir_layout.addWidget(self.indir_label)
 
-        self.indirButton = qtw.QPushButton("Load dataset")
-        self.indirButton.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
-        self.indir_layout.addWidget(self.indirButton)
+        self.indir_button = qtw.QPushButton("Load dataset")
+        self.indir_button.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
+        self.indir_layout.addWidget(self.indir_button)
 
         self.bkg_layout = qtw.QHBoxLayout()
         self.bkg_layout.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
         self.grid.addLayout(self.bkg_layout, 1,1,1,2)
 
-        self.bkgLabel = qtw.QLabel("Select a background for subtraction")
-        self.bkgLabel.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
-        self.bkgLabel.setMinimumWidth(350)
-        self.bkgLabel.setSizePolicy(qtw.QSizePolicy.Policy.Preferred, qtw.QSizePolicy.Policy.Fixed)
-        self.bkgLabel.setFrameShape(qtw.QFrame.Shape.Panel)
-        self.bkgLabel.setFrameShadow(qtw.QFrame.Shadow.Sunken)
-        self.bkg_layout.addWidget(self.bkgLabel)
-        
-        self.rmbkgButton = qtw.QPushButton("Remove")
-        self.rmbkgButton.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
-        self.bkg_layout.addWidget(self.rmbkgButton)
+        self.bkg_label = qtw.QLabel("Select a background for subtraction")
+        self.bkg_label.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
+        self.bkg_label.setMinimumWidth(350)
+        self.bkg_label.setSizePolicy(qtw.QSizePolicy.Policy.Preferred, qtw.QSizePolicy.Policy.Fixed)
+        self.bkg_label.setFrameShape(qtw.QFrame.Shape.Panel)
+        self.bkg_label.setFrameShadow(qtw.QFrame.Shadow.Sunken)
+        self.bkg_layout.addWidget(self.bkg_label)
 
-        self.bkgScale_DSpinBox = SciSpinBox()
-        self.bkgScale_DSpinBox.setMinimum(0)
-        self.bkgScale_DSpinBox.setValue(1)
-        self.bkgScale_DSpinBox.setToolTip('Scale your background to match dataset\n' \
+        self.rm_bkg_button = qtw.QPushButton("Remove")
+        self.rm_bkg_button.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
+        self.bkg_layout.addWidget(self.rm_bkg_button)
+
+        self.bkg_scale_spinbox = SciSpinBox()
+        self.bkg_scale_spinbox.setMinimum(0)
+        self.bkg_scale_spinbox.setValue(1)
+        self.bkg_scale_spinbox.setToolTip('Scale your background to match dataset\n' \
                                           '(View in "Plot input dataset")')
-        self.bkg_layout.addWidget(self.bkgScale_DSpinBox)
+        self.bkg_layout.addWidget(self.bkg_scale_spinbox)
 
-        self.getbkgButton = qtw.QPushButton("Load background")
-        self.getbkgButton.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
-        self.bkg_layout.addWidget(self.getbkgButton)
+        self.getbkg_button = qtw.QPushButton("Load background")
+        self.getbkg_button.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
+        self.bkg_layout.addWidget(self.getbkg_button)
 
-        self.plotDataButton = qtw.QPushButton("Plot input dataset")
-        self.plotDataButton.setSizePolicy(qtw.QSizePolicy.Policy.MinimumExpanding, qtw.QSizePolicy.Policy.Ignored)
-        self.grid.addWidget(self.plotDataButton, 2,0)
+        self.plot_data_button = qtw.QPushButton("Plot input dataset")
+        self.plot_data_button.setSizePolicy(qtw.QSizePolicy.Policy.MinimumExpanding, qtw.QSizePolicy.Policy.Ignored)
+        self.grid.addWidget(self.plot_data_button, 2,0)
 
         self.xrange_layout = qtw.QGridLayout()
         self.grid.addLayout(self.xrange_layout, 3,0)
@@ -202,24 +224,24 @@ class MainWindow(qtw.QMainWindow):
         self.plot_xrange_label.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
         self.xrange_layout.addWidget(self.plot_xrange_label, 2,0,1,2)
 
-        self.plot_xmin_DSpinBox = qtw.QDoubleSpinBox()
-        self.plot_xmin_DSpinBox.setMinimum(0)
-        self.plot_xmin_DSpinBox.setMaximum(999.99)
-        self.plot_xmin_DSpinBox.setValue(0)
-        self.plot_xmin_DSpinBox.setDecimals(2)
-        self.plot_xmin_DSpinBox.setSingleStep(0.01)
-        self.xrange_layout.addWidget(self.plot_xmin_DSpinBox, 3,0)
-        self.plot_xmin_DSpinBox.setToolTip("Minimum x-value in plots\n" \
+        self.plot_xmin_spinbox = qtw.QDoubleSpinBox()
+        self.plot_xmin_spinbox.setMinimum(0)
+        self.plot_xmin_spinbox.setMaximum(999.99)
+        self.plot_xmin_spinbox.setValue(0)
+        self.plot_xmin_spinbox.setDecimals(2)
+        self.plot_xmin_spinbox.setSingleStep(0.01)
+        self.xrange_layout.addWidget(self.plot_xmin_spinbox, 3,0)
+        self.plot_xmin_spinbox.setToolTip("Minimum x-value in plots\n" \
                                            "(if min equals max, use full dataset)")
 
-        self.plot_xmax_DSpinBox = qtw.QDoubleSpinBox()
-        self.plot_xmax_DSpinBox.setMinimum(0)
-        self.plot_xmax_DSpinBox.setMaximum(999.99)
-        self.plot_xmax_DSpinBox.setValue(0)
-        self.plot_xmax_DSpinBox.setDecimals(2)
-        self.plot_xmax_DSpinBox.setSingleStep(0.01)
-        self.xrange_layout.addWidget(self.plot_xmax_DSpinBox, 3,1)
-        self.plot_xmax_DSpinBox.setToolTip("Maximum x-value in plots\n" \
+        self.plot_xmax_spinbox = qtw.QDoubleSpinBox()
+        self.plot_xmax_spinbox.setMinimum(0)
+        self.plot_xmax_spinbox.setMaximum(999.99)
+        self.plot_xmax_spinbox.setValue(0)
+        self.plot_xmax_spinbox.setDecimals(2)
+        self.plot_xmax_spinbox.setSingleStep(0.01)
+        self.xrange_layout.addWidget(self.plot_xmax_spinbox, 3,1)
+        self.plot_xmax_spinbox.setToolTip("Maximum x-value in plots\n" \
                                            "(if min equals max, use full dataset)")
 
         #############################
@@ -229,101 +251,101 @@ class MainWindow(qtw.QMainWindow):
         self.algorithm_layout = qtw.QGridLayout()
         self.grid.addLayout(self.algorithm_layout, 2,1)
 
-        self.algorithmGroup = qtw.QButtonGroup()
-        self.algorithmTitle = qtw.QLabel("Algorithm")
-        self.algorithmTitle.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
-        self.algorithmTitle.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
-        self.algorithm_layout.addWidget(self.algorithmTitle, 0,0,1,3)
+        self.algorithm_group = qtw.QButtonGroup()
+        self.algorithm_title = qtw.QLabel("Algorithm")
+        self.algorithm_title.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
+        self.algorithm_title.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
+        self.algorithm_layout.addWidget(self.algorithm_title, 0,0,1,3)
 
-        self.PCAButton = qtw.QRadioButton("PCA")
-        self.PCAButton.setChecked(True)
-        self.PCAButton.setToolTip("Principal Component Analysis (scikit-learn)")
-        self.algorithm_layout.addWidget(self.PCAButton, 1,0)
+        self.PCA_button = qtw.QRadioButton("PCA")
+        self.PCA_button.setChecked(True)
+        self.PCA_button.setToolTip("Principal Component Analysis (scikit-learn)")
+        self.algorithm_layout.addWidget(self.PCA_button, 1,0)
 
-        self.NMFButton = qtw.QRadioButton("NMF")
-        self.NMFButton.setToolTip("Non-Negative Matrix Factorization (scikit-learn)")
-        self.algorithm_layout.addWidget(self.NMFButton, 1,1)
+        self.NMF_button = qtw.QRadioButton("NMF")
+        self.NMF_button.setToolTip("Non-Negative Matrix Factorization (scikit-learn)")
+        self.algorithm_layout.addWidget(self.NMF_button, 1,1)
 
-        self.ICAButton = qtw.QRadioButton("ICA")
-        self.ICAButton.setToolTip("Independent Component Analysis (scikit-learn)")
-        self.algorithm_layout.addWidget(self.ICAButton, 1,2)
+        self.ICA_button = qtw.QRadioButton("ICA")
+        self.ICA_button.setToolTip("Independent Component Analysis (scikit-learn)")
+        self.algorithm_layout.addWidget(self.ICA_button, 1,2)
 
-        self.SNMFButton = qtw.QRadioButton("SNMF")
-        self.SNMFButton.setToolTip("Stretched Non-Negative Matrix Factorization (diffpy)\n" \
+        self.SNMF_button = qtw.QRadioButton("SNMF")
+        self.SNMF_button.setToolTip("Stretched Non-Negative Matrix Factorization (diffpy)\n" \
                                    "WARNING: The SNMF algorithm takes a lot of time.\n" \
                                    "Error calculation will not be performed.")
-        self.algorithm_layout.addWidget(self.SNMFButton, 2,0)
+        self.algorithm_layout.addWidget(self.SNMF_button, 2,0)
 
-        self.calc_err_CheckBox = qtw.QCheckBox("Calculate errors")
-        self.calc_err_CheckBox.setChecked(True)
-        self.calc_err_CheckBox.setToolTip("Calculates errors for 1 to 10 components")
-        self.algorithm_layout.addWidget(self.calc_err_CheckBox, 2,1)
-        self.algorithmGroup.buttonClicked.connect(
-            lambda button: self.calc_err_CheckBox.setDisabled(True)
-            if button==self.SNMFButton
-            else self.calc_err_CheckBox.setEnabled(True)
+        self.calc_err_checkbox = qtw.QCheckBox("Calculate errors")
+        self.calc_err_checkbox.setChecked(True)
+        self.calc_err_checkbox.setToolTip("Calculates errors for 1 to 10 components")
+        self.algorithm_layout.addWidget(self.calc_err_checkbox, 2,1)
+        self.algorithm_group.buttonClicked.connect(
+            lambda button: self.calc_err_checkbox.setDisabled(True)
+            if button==self.SNMF_button
+            else self.calc_err_checkbox.setEnabled(True)
         )
-        self.algorithmGroup.buttonClicked.connect(
-            lambda button: self.calc_err_CheckBox.setChecked(False)
-            if button==self.SNMFButton
+        self.algorithm_group.buttonClicked.connect(
+            lambda button: self.calc_err_checkbox.setChecked(False)
+            if button==self.SNMF_button
             else None
         )
 
-        self.algorithmGroup.addButton(self.PCAButton)
-        self.algorithmGroup.addButton(self.NMFButton)
-        self.algorithmGroup.addButton(self.ICAButton)
-        self.algorithmGroup.addButton(self.SNMFButton)
+        self.algorithm_group.addButton(self.PCA_button)
+        self.algorithm_group.addButton(self.NMF_button)
+        self.algorithm_group.addButton(self.ICA_button)
+        self.algorithm_group.addButton(self.SNMF_button)
 
-        self.num_components_layout = qtw.QGridLayout()
-        self.grid.addLayout(self.num_components_layout, 3,1)
+        self.comp_num_layout = qtw.QGridLayout()
+        self.grid.addLayout(self.comp_num_layout, 3,1)
 
-        self.numComponentsTitle = qtw.QLabel("Number of Components")
-        self.numComponentsTitle.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
-        self.numComponentsTitle.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
-        self.num_components_layout.addWidget(self.numComponentsTitle, 0,0)
+        self.comp_num_title = qtw.QLabel("Number of Components")
+        self.comp_num_title.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
+        self.comp_num_title.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
+        self.comp_num_layout.addWidget(self.comp_num_title, 0,0)
 
         self.num_components_slider_layout = qtw.QHBoxLayout()
-        self.num_components_layout.addLayout(self.num_components_slider_layout, 1,0)
+        self.comp_num_layout.addLayout(self.num_components_slider_layout, 1,0)
 
-        self.numComponentsSlider = qtw.QSlider(qtc.Qt.Orientation.Horizontal)
-        self.numComponentsSlider.setTickPosition(qtw.QSlider.TickPosition.TicksBothSides)
-        self.numComponentsSlider.setTickInterval(1)
-        self.numComponentsSlider.setMinimum(2)
-        self.numComponentsSlider.setMaximum(10)
-        self.numComponentsSlider.setValue(4)
-        self.numComponentsSlider.setSingleStep(1)
-        self.numComponentsSlider.setPageStep(1)
-        self.numComponentsSlider.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
-        self.num_components_slider_layout.addWidget(self.numComponentsSlider)
+        self.comp_num_slider = qtw.QSlider(qtc.Qt.Orientation.Horizontal)
+        self.comp_num_slider.setTickPosition(qtw.QSlider.TickPosition.TicksBothSides)
+        self.comp_num_slider.setTickInterval(1)
+        self.comp_num_slider.setMinimum(2)
+        self.comp_num_slider.setMaximum(10)
+        self.comp_num_slider.setValue(4)
+        self.comp_num_slider.setSingleStep(1)
+        self.comp_num_slider.setPageStep(1)
+        self.comp_num_slider.setSizePolicy(qtw.QSizePolicy.Policy.Minimum,qtw.QSizePolicy.Policy.Fixed)
+        self.num_components_slider_layout.addWidget(self.comp_num_slider)
 
-        self.numComponentsLabel = qtw.QLabel(str(self.numComponentsSlider.value()))
-        self.numComponentsLabel.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
-        self.num_components_slider_layout.addWidget(self.numComponentsLabel)
+        self.comp_num_label = qtw.QLabel(str(self.comp_num_slider.value()))
+        self.comp_num_label.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
+        self.num_components_slider_layout.addWidget(self.comp_num_label)
 
 
         self.algorithm_parameters_layout = qtw.QGridLayout()
         self.grid.addLayout(self.algorithm_parameters_layout, 4,1)
 
-        self.algorithmParametersTitle = qtw.QLabel("Algorithm Parameters")
-        self.algorithmParametersTitle.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
-        self.algorithmParametersTitle.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
-        self.algorithm_parameters_layout.addWidget(self.algorithmParametersTitle, 0,0, 1,3)
+        self.algorithm_parameters_title = qtw.QLabel("Algorithm Parameters")
+        self.algorithm_parameters_title.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
+        self.algorithm_parameters_title.setSizePolicy(qtw.QSizePolicy.Policy.Minimum, qtw.QSizePolicy.Policy.Fixed)
+        self.algorithm_parameters_layout.addWidget(self.algorithm_parameters_title, 0,0, 1,3)
 
         ##########################
         ##### PCA parameters #####
         ##########################
-        self.PCAwhitenCheck = qtw.QCheckBox("Whiten")
-        self.algorithm_parameters_layout.addWidget(self.PCAwhitenCheck, 1,0)
-        self.PCAwhitenCheck.setToolTip("[whiten]\n" \
+        self.PCA_whiten_checkbox = qtw.QCheckBox("Whiten")
+        self.algorithm_parameters_layout.addWidget(self.PCA_whiten_checkbox, 1,0)
+        self.PCA_whiten_checkbox.setToolTip("[whiten]\n" \
         "Whitening will remove some information from the transformed signal\n" \
         "(the relative variance scales of the components) but can sometime\n" \
         "improve the predictive accuracy of the downstream estimators\n" \
         "by making their data respect some hard-wired assumptions")
 
-        self.PCAsolverDropdown = qtw.QComboBox()
-        self.PCAsolverDropdown.addItems(['auto', 'full', 'covariance_eigh', 'arpack', 'randomized'])
-        self.algorithm_parameters_layout.addWidget(self.PCAsolverDropdown, 1,1)
-        self.PCAsolverDropdown.setToolTip("[svd_solver]\n" \
+        self.PCA_solver_dropdown = qtw.QComboBox()
+        self.PCA_solver_dropdown.addItems(['auto', 'full', 'covariance_eigh', 'arpack', 'randomized'])
+        self.algorithm_parameters_layout.addWidget(self.PCA_solver_dropdown, 1,1)
+        self.PCA_solver_dropdown.setToolTip("[svd_solver]\n" \
         "The type of Singular Value Decomposition solver to use:\n" \
         "auto (default): Chooses solver based on size of dataset and number of components\n" \
         "full: Runs exact full SVD\n" \
@@ -334,91 +356,91 @@ class MainWindow(qtw.QMainWindow):
         "randomized: Runs randomized SVD")
 
         # Only for 'arpack' solver
-        self.PCAtolSpinbox = SciSpinBox()
-        self.PCAtolSpinbox.setMinimum(0)
-        self.PCAtolSpinbox.setValue(0)
-        self.algorithm_parameters_layout.addWidget(self.PCAtolSpinbox, 1,2)
-        self.PCAtolSpinbox.setToolTip("[tol]\n" \
+        self.PCA_tol_spinbox = SciSpinBox()
+        self.PCA_tol_spinbox.setMinimum(0)
+        self.PCA_tol_spinbox.setValue(0)
+        self.algorithm_parameters_layout.addWidget(self.PCA_tol_spinbox, 1,2)
+        self.PCA_tol_spinbox.setToolTip("[tol]\n" \
         "Tolerance for singular values using 'arpack'")
-        self.PCAsolverDropdown.currentTextChanged.connect(
-            lambda currentText: self.PCAtolSpinbox.show()
+        self.PCA_solver_dropdown.currentTextChanged.connect(
+            lambda currentText: self.PCA_tol_spinbox.show()
             if currentText=='arpack'
-            else self.PCAtolSpinbox.hide()
+            else self.PCA_tol_spinbox.hide()
         )
 
         # Only for 'randomized' solver
-        self.PCAiterated_powerSpinbox = qtw.QSpinBox()
-        self.PCAiterated_powerSpinbox.setMinimum(0)
-        self.PCAiterated_powerSpinbox.setMaximum(999999)
-        self.PCAiterated_powerSpinbox.setValue(0)
-        self.PCAiterated_powerSpinbox.setSingleStep(100)
-        self.algorithm_parameters_layout.addWidget(self.PCAiterated_powerSpinbox, 2,0)
-        self.PCAiterated_powerSpinbox.setToolTip("[iterated_power]\n" \
+        self.PCA_iterated_power_spinbox = qtw.QSpinBox()
+        self.PCA_iterated_power_spinbox.setMinimum(0)
+        self.PCA_iterated_power_spinbox.setMaximum(999999)
+        self.PCA_iterated_power_spinbox.setValue(0)
+        self.PCA_iterated_power_spinbox.setSingleStep(100)
+        self.algorithm_parameters_layout.addWidget(self.PCA_iterated_power_spinbox, 2,0)
+        self.PCA_iterated_power_spinbox.setToolTip("[iterated_power]\n" \
         "Number of iterations for the power method in 'randomized'")
-        self.PCAsolverDropdown.currentTextChanged.connect(
-            lambda currentText: self.PCAiterated_powerSpinbox.show()
+        self.PCA_solver_dropdown.currentTextChanged.connect(
+            lambda currentText: self.PCA_iterated_power_spinbox.show()
             if currentText=='randomized'
-            else self.PCAiterated_powerSpinbox.hide()
+            else self.PCA_iterated_power_spinbox.hide()
         )
 
         # Only for 'randomized' solver
-        self.PCAiterated_powerAutoCheckbox = qtw.QCheckBox("auto")
-        self.algorithm_parameters_layout.addWidget(self.PCAiterated_powerAutoCheckbox, 2,1)
-        self.PCAiterated_powerAutoCheckbox.setToolTip("[iterated_power]\n" \
+        self.PCA_iterated_power_auto_checkbox = qtw.QCheckBox("auto")
+        self.algorithm_parameters_layout.addWidget(self.PCA_iterated_power_auto_checkbox, 2,1)
+        self.PCA_iterated_power_auto_checkbox.setToolTip("[iterated_power]\n" \
         "Automatically choose number of iterations")
-        self.PCAiterated_powerAutoCheckbox.clicked.connect(
-            lambda state: self.PCAiterated_powerSpinbox.setDisabled(True)
+        self.PCA_iterated_power_auto_checkbox.clicked.connect(
+            lambda state: self.PCA_iterated_power_spinbox.setDisabled(True)
             if state
-            else self.PCAiterated_powerSpinbox.setDisabled(False)
+            else self.PCA_iterated_power_spinbox.setDisabled(False)
         )
-        self.PCAsolverDropdown.currentTextChanged.connect(
-            lambda currentText: self.PCAiterated_powerAutoCheckbox.show()
+        self.PCA_solver_dropdown.currentTextChanged.connect(
+            lambda currentText: self.PCA_iterated_power_auto_checkbox.show()
             if currentText=='randomized'
-            else self.PCAiterated_powerAutoCheckbox.hide()
+            else self.PCA_iterated_power_auto_checkbox.hide()
         )
 
         # Only for 'randomized' solver
-        self.PCAn_oversampledSpinbox = qtw.QSpinBox()
-        self.PCAn_oversampledSpinbox.setMinimum(0)
-        self.PCAn_oversampledSpinbox.setMaximum(50)
-        self.PCAn_oversampledSpinbox.setValue(10)
-        self.PCAn_oversampledSpinbox.setSingleStep(1)
-        self.algorithm_parameters_layout.addWidget(self.PCAn_oversampledSpinbox, 2,2)
-        self.PCAn_oversampledSpinbox.setToolTip("[n_oversamples]\n" \
+        self.PCA_n_oversampled_spinbox = qtw.QSpinBox()
+        self.PCA_n_oversampled_spinbox.setMinimum(0)
+        self.PCA_n_oversampled_spinbox.setMaximum(50)
+        self.PCA_n_oversampled_spinbox.setValue(10)
+        self.PCA_n_oversampled_spinbox.setSingleStep(1)
+        self.algorithm_parameters_layout.addWidget(self.PCA_n_oversampled_spinbox, 2,2)
+        self.PCA_n_oversampled_spinbox.setToolTip("[n_oversamples]\n" \
         "Additional number of random vectors to sample using 'randomized'")
-        self.PCAsolverDropdown.currentTextChanged.connect(
-            lambda currentText: self.PCAn_oversampledSpinbox.show()
+        self.PCA_solver_dropdown.currentTextChanged.connect(
+            lambda currentText: self.PCA_n_oversampled_spinbox.show()
             if currentText=='randomized'
-            else self.PCAn_oversampledSpinbox.hide()
+            else self.PCA_n_oversampled_spinbox.hide()
         )
 
         # Only for 'randomized' solver // Not for 'arpack' solver
-        self.PCApower_iteration_normalizerDropdown = qtw.QComboBox()
-        self.PCApower_iteration_normalizerDropdown.addItems(['auto', 'QR', 'LU', 'none'])
-        self.algorithm_parameters_layout.addWidget(self.PCApower_iteration_normalizerDropdown, 1,2)
-        self.PCApower_iteration_normalizerDropdown.setToolTip("[power_iteration_normalizer]\n" \
+        self.PCA_power_iteration_normalizer_dropdown = qtw.QComboBox()
+        self.PCA_power_iteration_normalizer_dropdown.addItems(['auto', 'QR', 'LU', 'none'])
+        self.algorithm_parameters_layout.addWidget(self.PCA_power_iteration_normalizer_dropdown, 1,2)
+        self.PCA_power_iteration_normalizer_dropdown.setToolTip("[power_iteration_normalizer]\n" \
         "Power iteration normalizer using 'randomized'")
-        self.PCAsolverDropdown.currentTextChanged.connect(
-            lambda currentText: self.PCApower_iteration_normalizerDropdown.show()
+        self.PCA_solver_dropdown.currentTextChanged.connect(
+            lambda currentText: self.PCA_power_iteration_normalizer_dropdown.show()
             if currentText=='randomized'
-            else self.PCApower_iteration_normalizerDropdown.hide()
+            else self.PCA_power_iteration_normalizer_dropdown.hide()
         )
 
         # Ignored PCA parameters:
         # random_state
 
-        self.PCAalgorithmWidgets = [self.PCAwhitenCheck, self.PCAsolverDropdown,
-                                    self.PCAtolSpinbox, self.PCAiterated_powerSpinbox,
-                                    self.PCAiterated_powerAutoCheckbox, self.PCAn_oversampledSpinbox,
-                                    self.PCAn_oversampledSpinbox, self.PCApower_iteration_normalizerDropdown]
-        
+        self.PCA_algorithm_widgets = [self.PCA_whiten_checkbox, self.PCA_solver_dropdown,
+                                    self.PCA_tol_spinbox, self.PCA_iterated_power_spinbox,
+                                    self.PCA_iterated_power_auto_checkbox, self.PCA_n_oversampled_spinbox,
+                                    self.PCA_n_oversampled_spinbox, self.PCA_power_iteration_normalizer_dropdown]
+
         ##########################
         ##### NMF parameters #####
         ##########################
-        self.NMFinitDropdown = qtw.QComboBox()
-        self.NMFinitDropdown.addItems(["nndsvda", "random", "nndsvd", "nndsvdar"])
-        self.algorithm_parameters_layout.addWidget(self.NMFinitDropdown, 1,0)
-        self.NMFinitDropdown.setToolTip("[init]\n" \
+        self.NMF_init_dropdown = qtw.QComboBox()
+        self.NMF_init_dropdown.addItems(["nndsvda", "random", "nndsvd", "nndsvdar"])
+        self.algorithm_parameters_layout.addWidget(self.NMF_init_dropdown, 1,0)
+        self.NMF_init_dropdown.setToolTip("[init]\n" \
         "Method used to initialize the procedure:\n" \
         "('nndsvda' is recommended for PDF and 'nndsvd' is recommended for XRD)\n" \
         "nndsvda (default): Better when sparsity is not desired (PDF)\n" \
@@ -426,109 +448,109 @@ class MainWindow(qtw.QMainWindow):
         "nndsvd: Non-negative Double Singular Value Decomposition (better for sparseness) (XRD)\n" \
         "nndsvdar: Faster, less accurate alternative to NNDSVDa when sparsity is not desired")
 
-        self.NMFsolverDropdown = qtw.QComboBox()
-        self.NMFsolverDropdown.addItems(["cd", "mu"])
-        self.algorithm_parameters_layout.addWidget(self.NMFsolverDropdown, 1,1)
-        self.NMFsolverDropdown.setToolTip("[solver]\n" \
+        self.NMF_solver_dropdown = qtw.QComboBox()
+        self.NMF_solver_dropdown.addItems(["cd", "mu"])
+        self.algorithm_parameters_layout.addWidget(self.NMF_solver_dropdown, 1,1)
+        self.NMF_solver_dropdown.setToolTip("[solver]\n" \
         "Numerical solver to use:\n" \
         "cd (default): Coordinate Descent\n" \
         "mu: Multiplicative Update\n" \
         "('mu' gives poor results with 'nndsvd' as it cannot update zeros in initialization)")
 
-        self.NMFmax_iterSpinbox = qtw.QSpinBox()
-        self.NMFmax_iterSpinbox.setMinimum(0)
-        self.NMFmax_iterSpinbox.setMaximum(999999)
-        self.NMFmax_iterSpinbox.setValue(2500)
-        self.algorithm_parameters_layout.addWidget(self.NMFmax_iterSpinbox, 2,0)
-        self.NMFmax_iterSpinbox.setToolTip("[max_iter]\n" \
+        self.NMF_max_iter_spinbox = qtw.QSpinBox()
+        self.NMF_max_iter_spinbox.setMinimum(0)
+        self.NMF_max_iter_spinbox.setMaximum(999999)
+        self.NMF_max_iter_spinbox.setValue(2500)
+        self.algorithm_parameters_layout.addWidget(self.NMF_max_iter_spinbox, 2,0)
+        self.NMF_max_iter_spinbox.setToolTip("[max_iter]\n" \
         "Maximum number of iterations before timing out")
 
-        self.NMFtolSpinbox = SciSpinBox()
-        self.NMFtolSpinbox.setMinimum(0)
-        self.NMFtolSpinbox.setValue(1e-4)
-        self.algorithm_parameters_layout.addWidget(self.NMFtolSpinbox, 2,1)
-        self.NMFtolSpinbox.setToolTip("[tol]\n" \
+        self.NMF_tol_spinbox = SciSpinBox()
+        self.NMF_tol_spinbox.setMinimum(0)
+        self.NMF_tol_spinbox.setValue(1e-4)
+        self.algorithm_parameters_layout.addWidget(self.NMF_tol_spinbox, 2,1)
+        self.NMF_tol_spinbox.setToolTip("[tol]\n" \
         "Tolerance of the stopping condition")
 
         # Used in 'cd' solver
-        self.NMFl1_ratioDSpinbox = qtw.QDoubleSpinBox()
-        self.NMFl1_ratioDSpinbox.setMinimum(0)
-        self.NMFl1_ratioDSpinbox.setMaximum(1)
-        self.NMFl1_ratioDSpinbox.setValue(0)
-        self.NMFl1_ratioDSpinbox.setSingleStep(0.05)
-        self.algorithm_parameters_layout.addWidget(self.NMFl1_ratioDSpinbox, 1,2)
-        self.NMFl1_ratioDSpinbox.setToolTip("[l1_ratio]\n" \
+        self.NMF_l1_ratio_spinbox = qtw.QDoubleSpinBox()
+        self.NMF_l1_ratio_spinbox.setMinimum(0)
+        self.NMF_l1_ratio_spinbox.setMaximum(1)
+        self.NMF_l1_ratio_spinbox.setValue(0)
+        self.NMF_l1_ratio_spinbox.setSingleStep(0.05)
+        self.algorithm_parameters_layout.addWidget(self.NMF_l1_ratio_spinbox, 1,2)
+        self.NMF_l1_ratio_spinbox.setToolTip("[l1_ratio]\n" \
         "Regularization mixing parameter:\n" \
         "(0, default): elementwise L2 penalty aka. Frobenius Norm\n"
         "(1): elementwwise L1 penalty (better for sparseness)\n")
-        self.NMFsolverDropdown.currentTextChanged.connect(
-            lambda currentText: self.NMFl1_ratioDSpinbox.show()
+        self.NMF_solver_dropdown.currentTextChanged.connect(
+            lambda currentText: self.NMF_l1_ratio_spinbox.show()
             if currentText=='cd'
-            else self.NMFl1_ratioDSpinbox.hide()
+            else self.NMF_l1_ratio_spinbox.hide()
         )
 
-        # Only for 'mu' solver 
-        self.NMFbeta_lossDropdown = qtw.QComboBox()
-        self.NMFbeta_lossDropdown.addItems(["frobenius", "kullback-leibler"]) # "itakura-saito" not included as it cannot have zeros in input data, which XRD/PDF often can have
-        self.algorithm_parameters_layout.addWidget(self.NMFbeta_lossDropdown, 1,2)
-        self.NMFbeta_lossDropdown.setToolTip("[beta_loss]\n" \
+        # Only for 'mu' solver
+        self.NMF_beta_loss_dropdown = qtw.QComboBox()
+        self.NMF_beta_loss_dropdown.addItems(["frobenius", "kullback-leibler"]) # "itakura-saito" not included as it cannot have zeros in input data, which XRD/PDF often can have
+        self.algorithm_parameters_layout.addWidget(self.NMF_beta_loss_dropdown, 1,2)
+        self.NMF_beta_loss_dropdown.setToolTip("[beta_loss]\n" \
         "Beta divergence to be minimized," \
         "measuring the distance between X and the dot product WH using 'mu':\n" \
         "frobenius is default")
-        self.NMFsolverDropdown.currentTextChanged.connect(
-            lambda currentText: self.NMFbeta_lossDropdown.show()
+        self.NMF_solver_dropdown.currentTextChanged.connect(
+            lambda currentText: self.NMF_beta_loss_dropdown.show()
             if currentText=='mu'
-            else self.NMFbeta_lossDropdown.hide()
+            else self.NMF_beta_loss_dropdown.hide()
         )
 
-        self.NMFalpha_WDSpinbox = qtw.QDoubleSpinBox()
-        self.NMFalpha_WDSpinbox.setMinimum(0)
-        self.NMFalpha_WDSpinbox.setMaximum(10)
-        self.NMFalpha_WDSpinbox.setValue(0)
-        self.NMFalpha_WDSpinbox.setDecimals(5)
-        self.NMFalpha_WDSpinbox.setSingleStep(0.00005)
-        self.algorithm_parameters_layout.addWidget(self.NMFalpha_WDSpinbox, 3,0)
-        self.NMFalpha_WDSpinbox.setToolTip("[alpha_W]\n" \
+        self.NMF_alpha_W_spinbox = qtw.QDoubleSpinBox()
+        self.NMF_alpha_W_spinbox.setMinimum(0)
+        self.NMF_alpha_W_spinbox.setMaximum(10)
+        self.NMF_alpha_W_spinbox.setValue(0)
+        self.NMF_alpha_W_spinbox.setDecimals(5)
+        self.NMF_alpha_W_spinbox.setSingleStep(0.00005)
+        self.algorithm_parameters_layout.addWidget(self.NMF_alpha_W_spinbox, 3,0)
+        self.NMF_alpha_W_spinbox.setToolTip("[alpha_W]\n" \
         "Constant that multiplies the regularization terms of the mixing of features:\n" \
         "(Regularization is a penalty term to constrain parameter complexity and reduce overfitting)\n" \
         "0 (default) means no regularization")
 
-        self.NMFalpha_HDSpinbox = qtw.QDoubleSpinBox()
-        self.NMFalpha_HDSpinbox.setMinimum(0)
-        self.NMFalpha_HDSpinbox.setMaximum(10)
-        self.NMFalpha_HDSpinbox.setValue(0)
-        self.NMFalpha_HDSpinbox.setDecimals(5)
-        self.NMFalpha_HDSpinbox.setSingleStep(0.00005)
-        self.NMFalpha_HDSpinbox.setDisabled(True)
-        self.algorithm_parameters_layout.addWidget(self.NMFalpha_HDSpinbox, 3,1)
-        self.NMFalpha_HDSpinbox.setToolTip("[alpha_H]\n" \
+        self.NMF_alpha_H_spinbox = qtw.QDoubleSpinBox()
+        self.NMF_alpha_H_spinbox.setMinimum(0)
+        self.NMF_alpha_H_spinbox.setMaximum(10)
+        self.NMF_alpha_H_spinbox.setValue(0)
+        self.NMF_alpha_H_spinbox.setDecimals(5)
+        self.NMF_alpha_H_spinbox.setSingleStep(0.00005)
+        self.NMF_alpha_H_spinbox.setDisabled(True)
+        self.algorithm_parameters_layout.addWidget(self.NMF_alpha_H_spinbox, 3,1)
+        self.NMF_alpha_H_spinbox.setToolTip("[alpha_H]\n" \
         "Constant that multiplies the regularization terms of the features:\n" \
         "0 means no regularization. By default same as alpha_W ")
 
-        self.NMFalpha_HsameCheckbox = qtw.QCheckBox("same")
-        self.NMFalpha_HsameCheckbox.setChecked(True)
-        self.algorithm_parameters_layout.addWidget(self.NMFalpha_HsameCheckbox, 3,2)
-        self.NMFalpha_HsameCheckbox.setToolTip("[alpha_H]\n" \
+        self.NMF_alpha_H_same_checkbox = qtw.QCheckBox("same")
+        self.NMF_alpha_H_same_checkbox.setChecked(True)
+        self.algorithm_parameters_layout.addWidget(self.NMF_alpha_H_same_checkbox, 3,2)
+        self.NMF_alpha_H_same_checkbox.setToolTip("[alpha_H]\n" \
         "Use same regularization constant for features and mixing")
-        self.NMFalpha_HsameCheckbox.clicked.connect(
-            lambda state: self.NMFalpha_HDSpinbox.setDisabled(True)
+        self.NMF_alpha_H_same_checkbox.clicked.connect(
+            lambda state: self.NMF_alpha_H_spinbox.setDisabled(True)
             if state
-            else self.NMFalpha_HDSpinbox.setDisabled(False)
+            else self.NMF_alpha_H_spinbox.setDisabled(False)
         )
-        self.NMFalpha_HsameCheckbox.clicked.connect(
-            lambda state: self.NMFalpha_HDSpinbox.setValue(self.NMFalpha_WDSpinbox.value())
+        self.NMF_alpha_H_same_checkbox.clicked.connect(
+            lambda state: self.NMF_alpha_H_spinbox.setValue(self.NMF_alpha_W_spinbox.value())
             if state
             else None
         )
-        self.NMFalpha_WDSpinbox.valueChanged.connect(
-            lambda value: self.NMFalpha_HDSpinbox.setValue(value)
-            if self.NMFalpha_HsameCheckbox.isChecked()
+        self.NMF_alpha_W_spinbox.valueChanged.connect(
+            lambda value: self.NMF_alpha_H_spinbox.setValue(value)
+            if self.NMF_alpha_H_same_checkbox.isChecked()
             else None
         )
 
-        self.NMFrescale_CheckBox = qtw.QCheckBox("Rescale")
-        self.algorithm_parameters_layout.addWidget(self.NMFrescale_CheckBox, 2,2)
-        self.NMFrescale_CheckBox.setToolTip("Rescales scores to sum to 1")
+        self.NMF_rescale_checkbox = qtw.QCheckBox("Rescale")
+        self.algorithm_parameters_layout.addWidget(self.NMF_rescale_checkbox, 2,2)
+        self.NMF_rescale_checkbox.setToolTip("Rescales scores to sum to 1")
 
 
         # Ignored NMF parmeters:
@@ -536,57 +558,57 @@ class MainWindow(qtw.QMainWindow):
         # verbose
         # shuffle
 
-        self.NMFalgorithmWidgets = [self.NMFinitDropdown, self.NMFsolverDropdown,
-                                    self.NMFmax_iterSpinbox, self.NMFtolSpinbox,
-                                    self.NMFl1_ratioDSpinbox, self.NMFbeta_lossDropdown,
-                                    self.NMFalpha_WDSpinbox, self.NMFalpha_HDSpinbox,
-                                    self.NMFalpha_HsameCheckbox, self.NMFrescale_CheckBox]
-        
+        self.NMF_algorithm_widgets = [self.NMF_init_dropdown, self.NMF_solver_dropdown,
+                                    self.NMF_max_iter_spinbox, self.NMF_tol_spinbox,
+                                    self.NMF_l1_ratio_spinbox, self.NMF_beta_loss_dropdown,
+                                    self.NMF_alpha_W_spinbox, self.NMF_alpha_H_spinbox,
+                                    self.NMF_alpha_H_same_checkbox, self.NMF_rescale_checkbox]
+
         ##########################
         ##### ICA parameters #####
         ##########################
-        self.ICAalgorithmDropdown = qtw.QComboBox()
-        self.ICAalgorithmDropdown.addItems(['parallel', 'deflation'])
-        self.algorithm_parameters_layout.addWidget(self.ICAalgorithmDropdown, 1,0)
-        self.ICAalgorithmDropdown.setToolTip("[algorithm]\n" \
+        self.ICA_algorithm_dropdown = qtw.QComboBox()
+        self.ICA_algorithm_dropdown.addItems(['parallel', 'deflation'])
+        self.algorithm_parameters_layout.addWidget(self.ICA_algorithm_dropdown, 1,0)
+        self.ICA_algorithm_dropdown.setToolTip("[algorithm]\n" \
         "Specify which algorithm to use:\n" \
         "parallel is default")
 
-        self.ICAwhitenDropdown = qtw.QComboBox()
-        self.ICAwhitenDropdown.addItems(['unit-variance', 'arbitrary-variance', 'False'])
-        self.algorithm_parameters_layout.addWidget(self.ICAwhitenDropdown, 1,1)
-        self.ICAwhitenDropdown.setToolTip("[whiten]\n" \
+        self.ICA_whiten_dropdown = qtw.QComboBox()
+        self.ICA_whiten_dropdown.addItems(['unit-variance', 'arbitrary-variance', 'False'])
+        self.algorithm_parameters_layout.addWidget(self.ICA_whiten_dropdown, 1,1)
+        self.ICA_whiten_dropdown.setToolTip("[whiten]\n" \
         "Whitening strategy to use. False means no whitening:\n" \
         "unit-variance (default): the whitening matrix is rescaled to ensure each recovered source has unit variance\n" \
         "arbitrary-variance: a whitening with variance arbitrary is used\n" \
         "False: Data is considered whitened and no whitening is performed")
 
-        self.ICAmax_iterSpinbox = qtw.QSpinBox()
-        self.ICAmax_iterSpinbox.setMinimum(0)
-        self.ICAmax_iterSpinbox.setMaximum(999999)
-        self.ICAmax_iterSpinbox.setValue(2500)
-        self.algorithm_parameters_layout.addWidget(self.ICAmax_iterSpinbox, 2,0)
-        self.ICAmax_iterSpinbox.setToolTip("[max_iter]\n" \
+        self.ICA_max_iter_spinbox = qtw.QSpinBox()
+        self.ICA_max_iter_spinbox.setMinimum(0)
+        self.ICA_max_iter_spinbox.setMaximum(999999)
+        self.ICA_max_iter_spinbox.setValue(2500)
+        self.algorithm_parameters_layout.addWidget(self.ICA_max_iter_spinbox, 2,0)
+        self.ICA_max_iter_spinbox.setToolTip("[max_iter]\n" \
         "Maximum number of iterations during fit")
 
-        self.ICAtolSpinbox = SciSpinBox()
-        self.ICAtolSpinbox.setMinimum(0)
-        self.ICAtolSpinbox.setValue(1e-4)
-        self.algorithm_parameters_layout.addWidget(self.ICAtolSpinbox, 2,1)
-        self.ICAtolSpinbox.setToolTip("[tol]\n" \
+        self.ICA_tol_spinbox = SciSpinBox()
+        self.ICA_tol_spinbox.setMinimum(0)
+        self.ICA_tol_spinbox.setValue(1e-4)
+        self.algorithm_parameters_layout.addWidget(self.ICA_tol_spinbox, 2,1)
+        self.ICA_tol_spinbox.setToolTip("[tol]\n" \
         "A positive scalar giving the tolerance at which the un-mixing matrix is considered to have converged")
 
-        self.ICAfunDropdown = qtw.QComboBox()
-        self.ICAfunDropdown.addItems(['logcosh', 'exp', 'cube'])
-        self.algorithm_parameters_layout.addWidget(self.ICAfunDropdown, 1,2)
-        self.ICAfunDropdown.setToolTip("[fun]\n" \
+        self.ICA_fun_dropdown = qtw.QComboBox()
+        self.ICA_fun_dropdown.addItems(['logcosh', 'exp', 'cube'])
+        self.algorithm_parameters_layout.addWidget(self.ICA_fun_dropdown, 1,2)
+        self.ICA_fun_dropdown.setToolTip("[fun]\n" \
         "The functional form of the G function used in the approximation to neg-entropy:\n" \
         "logcosh is default")
 
-        self.ICAwhiten_solverDropdown = qtw.QComboBox()
-        self.ICAwhiten_solverDropdown.addItems(['svd', 'eigh'])
-        self.algorithm_parameters_layout.addWidget(self.ICAwhiten_solverDropdown, 2,2)
-        self.ICAwhiten_solverDropdown.setToolTip("[whiten_solver]\n" \
+        self.ICA_whiten_solver_dropdown = qtw.QComboBox()
+        self.ICA_whiten_solver_dropdown.addItems(['svd', 'eigh'])
+        self.algorithm_parameters_layout.addWidget(self.ICA_whiten_solver_dropdown, 2,2)
+        self.ICA_whiten_solver_dropdown.setToolTip("[whiten_solver]\n" \
         "The solver to use for whitening:\n" \
         "svd (default): More numerically stable if the problem is degenerate, and often faster for scattering\n" \
         "eigh: More memory efficient when there are more scans than datapoints (rare in scattering)")
@@ -596,57 +618,57 @@ class MainWindow(qtw.QMainWindow):
         # w_init
         # random_state
 
-        self.ICAalgorithmWidgets = [self.ICAalgorithmDropdown, self.ICAwhitenDropdown,
-                                    self.ICAmax_iterSpinbox, self.ICAtolSpinbox,
-                                    self.ICAfunDropdown, self.ICAwhiten_solverDropdown]
-        
+        self.ICA_algorithm_widgets = [self.ICA_algorithm_dropdown, self.ICA_whiten_dropdown,
+                                    self.ICA_max_iter_spinbox, self.ICA_tol_spinbox,
+                                    self.ICA_fun_dropdown, self.ICA_whiten_solver_dropdown]
+
         ###########################
         ##### SNMF parameters #####
         ###########################
-        self.SNMFmin_iterSpinbox = qtw.QSpinBox()
-        self.SNMFmin_iterSpinbox.setMinimum(0)
-        self.SNMFmin_iterSpinbox.setMaximum(999999)
-        self.SNMFmin_iterSpinbox.setValue(20)
-        self.algorithm_parameters_layout.addWidget(self.SNMFmin_iterSpinbox, 2,0)
-        self.SNMFmin_iterSpinbox.setToolTip("[min_iter]\n" \
+        self.SNMF_min_iter_spinbox = qtw.QSpinBox()
+        self.SNMF_min_iter_spinbox.setMinimum(0)
+        self.SNMF_min_iter_spinbox.setMaximum(999999)
+        self.SNMF_min_iter_spinbox.setValue(20)
+        self.algorithm_parameters_layout.addWidget(self.SNMF_min_iter_spinbox, 2,0)
+        self.SNMF_min_iter_spinbox.setToolTip("[min_iter]\n" \
         "Minimum number of iterations before terminating optimzation")
 
-        self.SNMFmax_iterSpinbox = qtw.QSpinBox()
-        self.SNMFmax_iterSpinbox.setMinimum(0)
-        self.SNMFmax_iterSpinbox.setMaximum(999999)
-        self.SNMFmax_iterSpinbox.setValue(500)
-        self.algorithm_parameters_layout.addWidget(self.SNMFmax_iterSpinbox, 2,1)
-        self.SNMFmax_iterSpinbox.setToolTip("[max_iter]\n" \
+        self.SNMF_max_iter_spinbox = qtw.QSpinBox()
+        self.SNMF_max_iter_spinbox.setMinimum(0)
+        self.SNMF_max_iter_spinbox.setMaximum(999999)
+        self.SNMF_max_iter_spinbox.setValue(500)
+        self.algorithm_parameters_layout.addWidget(self.SNMF_max_iter_spinbox, 2,1)
+        self.SNMF_max_iter_spinbox.setToolTip("[max_iter]\n" \
         "Maximum number of iterations before terminating optimzation")
 
-        self.SNMFtol_SciSpinbox = SciSpinBox()
-        self.SNMFtol_SciSpinbox.setMinimum(0)
-        self.SNMFtol_SciSpinbox.setValue(5e-07)
-        self.algorithm_parameters_layout.addWidget(self.SNMFtol_SciSpinbox, 2,2)
-        self.SNMFtol_SciSpinbox.setToolTip("[tol]\n" \
+        self.SNMF_tol_spinbox = SciSpinBox()
+        self.SNMF_tol_spinbox.setMinimum(0)
+        self.SNMF_tol_spinbox.setValue(5e-07)
+        self.algorithm_parameters_layout.addWidget(self.SNMF_tol_spinbox, 2,2)
+        self.SNMF_tol_spinbox.setToolTip("[tol]\n" \
         "Convergence threshold.\n" \
         "Minimum fractional improvment to allow terminating optimization")
 
-        self.SNMFrho_SciSpinbox = SciSpinBox()
-        self.SNMFrho_SciSpinbox.setMinimum(0)
-        self.SNMFrho_SciSpinbox.setValue(0)
-        self.SNMFrho_SciSpinbox.setDecimals(0)
+        self.SNMF_rho_spinbox = SciSpinBox()
+        self.SNMF_rho_spinbox.setMinimum(0)
+        self.SNMF_rho_spinbox.setValue(0)
+        self.SNMF_rho_spinbox.setDecimals(0)
         #self.SNMFrho_Spinbox.setMaximum(10000000000)
         #self.SNMFrho_Spinbox.setSingleStep(1)
-        self.algorithm_parameters_layout.addWidget(self.SNMFrho_SciSpinbox, 3,0)
-        self.SNMFrho_SciSpinbox.setToolTip("[rho]\n"
+        self.algorithm_parameters_layout.addWidget(self.SNMF_rho_spinbox, 3,0)
+        self.SNMF_rho_spinbox.setToolTip("[rho]\n"
         "Stretching factor // Stretching regularization hyperparameter. Controls stretching pentalty. \n" \
         "Typically adjusted in powers of 10.\n" \
         "Zero (default) corresponds to no stretching")
 
-        self.SNMFeta_DSpinbox = qtw.QDoubleSpinBox()
-        self.SNMFeta_DSpinbox.setMinimum(0)
-        self.SNMFeta_DSpinbox.setValue(0)
-        self.SNMFeta_DSpinbox.setDecimals(5)
+        self.SNMF_eta_spinbox = qtw.QDoubleSpinBox()
+        self.SNMF_eta_spinbox.setMinimum(0)
+        self.SNMF_eta_spinbox.setValue(0)
+        self.SNMF_eta_spinbox.setDecimals(5)
         #self.SNMFeta_DSpinbox.setMaximum(10)
         #self.SNMFeta_DSpinbox.setSingleStep(0.00005)
-        self.algorithm_parameters_layout.addWidget(self.SNMFeta_DSpinbox, 3,1)
-        self.SNMFeta_DSpinbox.setToolTip("[eta]\n" \
+        self.algorithm_parameters_layout.addWidget(self.SNMF_eta_spinbox, 3,1)
+        self.SNMF_eta_spinbox.setToolTip("[eta]\n" \
         "Sparsity factor. Should be set to zero (default) for non-sparse data such as PDF.\n" \
         "Can be used to improve results for sparse data such as XRD,\nbut due to instability should be used only faster selecting the best value for rho.\n" \
         "Suggested adjustment is by powers of 2")
@@ -655,69 +677,69 @@ class MainWindow(qtw.QMainWindow):
         # random_state
         # verbose
         # show_plots
-        
-        self.SNMFalgorithmWidgets = [self.SNMFmin_iterSpinbox, self.SNMFmax_iterSpinbox,
-                                     self.SNMFtol_SciSpinbox, self.SNMFrho_SciSpinbox,
-                                     self.SNMFeta_DSpinbox]
-        
+
+        self.SNMF_algorithm_widgets = [self.SNMF_min_iter_spinbox, self.SNMF_max_iter_spinbox,
+                                     self.SNMF_tol_spinbox, self.SNMF_rho_spinbox,
+                                     self.SNMF_eta_spinbox]
+
         #####################################
         ##### Analysis and plot widgets #####
         #####################################
 
-        self.runAnalysisButton = qtw.QPushButton("Run analysis")
-        self.runAnalysisButton.setSizePolicy(qtw.QSizePolicy.Policy.MinimumExpanding, qtw.QSizePolicy.Policy.Preferred)
-        self.grid.addWidget(self.runAnalysisButton, 2,2)
+        self.run_analysis_button = qtw.QPushButton("Run analysis")
+        self.run_analysis_button.setSizePolicy(qtw.QSizePolicy.Policy.MinimumExpanding, qtw.QSizePolicy.Policy.Preferred)
+        self.grid.addWidget(self.run_analysis_button, 2,2)
 
         self.results_layout = qtw.QGridLayout()
         self.grid.addLayout(self.results_layout, 3,2)
 
-        self.export_results_CheckBox = qtw.QCheckBox("Export results")
-        self.export_results_CheckBox.setToolTip("Exports plot of dataset, and analysis plot and results\n" \
+        self.export_results_checkbox = qtw.QCheckBox("Export results")
+        self.export_results_checkbox.setToolTip("Exports plot of dataset, and analysis plot and results\n" \
         "For the sake of analysis in other programs data is exported in input format (2θ not converted to Q)")
-        self.results_layout.addWidget(self.export_results_CheckBox, 0,0)
+        self.results_layout.addWidget(self.export_results_checkbox, 0,0)
 
-        self.export_recons_CheckBox = qtw.QCheckBox("Reconstructions")
-        self.export_recons_CheckBox.setToolTip("Exports the reconstructed dataset – scan by scan")
-        self.export_recons_CheckBox.setDisabled(True)
-        self.results_layout.addWidget(self.export_recons_CheckBox, 0,1)
-        self.export_results_CheckBox.clicked.connect(
-            lambda state: self.export_recons_CheckBox.setDisabled(False)
+        self.export_recons_checkbox = qtw.QCheckBox("Reconstructions")
+        self.export_recons_checkbox.setToolTip("Exports the reconstructed dataset – scan by scan")
+        self.export_recons_checkbox.setDisabled(True)
+        self.results_layout.addWidget(self.export_recons_checkbox, 0,1)
+        self.export_results_checkbox.clicked.connect(
+            lambda state: self.export_recons_checkbox.setDisabled(False)
             if state
-            else self.export_recons_CheckBox.setDisabled(True)
+            else self.export_recons_checkbox.setDisabled(True)
         )
-        self.export_results_CheckBox.clicked.connect(
-            lambda state: self.export_recons_CheckBox.setChecked(False)
+        self.export_results_checkbox.clicked.connect(
+            lambda state: self.export_recons_checkbox.setChecked(False)
             if not state
             else None
         )
 
-        self.export_diffs_CheckBox = qtw.QCheckBox("Differences")
-        self.export_diffs_CheckBox.setToolTip("Exports the difference between dataset and reconstruction – scan by scan")
-        self.export_diffs_CheckBox.setDisabled(True)
-        self.results_layout.addWidget(self.export_diffs_CheckBox, 1,1)
-        self.export_results_CheckBox.clicked.connect(
-            lambda state: self.export_diffs_CheckBox.setDisabled(False)
+        self.export_diffs_checkbox = qtw.QCheckBox("Differences")
+        self.export_diffs_checkbox.setToolTip("Exports the difference between dataset and reconstruction – scan by scan")
+        self.export_diffs_checkbox.setDisabled(True)
+        self.results_layout.addWidget(self.export_diffs_checkbox, 1,1)
+        self.export_results_checkbox.clicked.connect(
+            lambda state: self.export_diffs_checkbox.setDisabled(False)
             if state
-            else self.export_diffs_CheckBox.setDisabled(True)
+            else self.export_diffs_checkbox.setDisabled(True)
         )
-        self.export_results_CheckBox.clicked.connect(
-            lambda state: self.export_diffs_CheckBox.setChecked(False)
+        self.export_results_checkbox.clicked.connect(
+            lambda state: self.export_diffs_checkbox.setChecked(False)
             if not state
             else None
         )
 
-        self.export_compContribute_CheckBox = qtw.QCheckBox("Component contributions")
-        self.export_compContribute_CheckBox.setToolTip("Exports the partial component-wise reconstruction\n" \
+        self.export_comp_contribute_checkbox = qtw.QCheckBox("Component contributions")
+        self.export_comp_contribute_checkbox.setToolTip("Exports the partial component-wise reconstruction\n" \
                                                        "Each component multiplied by its own scoring – scan by scan")
-        self.export_compContribute_CheckBox.setDisabled(True)
-        self.results_layout.addWidget(self.export_compContribute_CheckBox, 1,0)
-        self.export_results_CheckBox.clicked.connect(
-            lambda state: self.export_compContribute_CheckBox.setDisabled(False)
+        self.export_comp_contribute_checkbox.setDisabled(True)
+        self.results_layout.addWidget(self.export_comp_contribute_checkbox, 1,0)
+        self.export_results_checkbox.clicked.connect(
+            lambda state: self.export_comp_contribute_checkbox.setDisabled(False)
             if state
-            else self.export_compContribute_CheckBox.setDisabled(True)
+            else self.export_comp_contribute_checkbox.setDisabled(True)
         )
-        self.export_results_CheckBox.clicked.connect(
-            lambda state: self.export_compContribute_CheckBox.setChecked(False)
+        self.export_results_checkbox.clicked.connect(
+            lambda state: self.export_comp_contribute_checkbox.setChecked(False)
             if not state
             else None
         )
@@ -746,7 +768,7 @@ class MainWindow(qtw.QMainWindow):
         self.reconstruct_widget1.setMaximum(9999)
         self.recon_plot_layout.addWidget(self.reconstruct_widget1, 5,1)
         self.reconstruct_widgets.append(self.reconstruct_widget1)
-        
+
         self.reconstruct_widget2 = qtw.QSpinBox()
         self.reconstruct_widget2.setMinimum(0)
         self.reconstruct_widget2.setMaximum(9999)
@@ -801,20 +823,26 @@ class MainWindow(qtw.QMainWindow):
         menu = self.menuBar()
         file_menu = menu.addMenu("File")
         open_indir_button = qtg.QAction("Open file directory", self)
-        open_indir_button.triggered.connect(lambda: qtg.QDesktopServices.openUrl(qtc.QUrl.fromLocalFile(self.indirLabel.text())))
+        open_indir_button.triggered.connect(
+            lambda: qtg.QDesktopServices.openUrl(qtc.QUrl.fromLocalFile(self.indir_label.text()))
+        )
         file_menu.addAction(open_indir_button)
 
         config_button = qtg.QAction("Open config file", self)
-        config_button.triggered.connect(lambda: qtg.QDesktopServices.openUrl(qtc.QUrl.fromLocalFile(f"{self.configpath}/config.dat")))
+        config_button.triggered.connect(
+            lambda: qtg.QDesktopServices.openUrl(qtc.QUrl.fromLocalFile(f"{self.configpath}/config.dat"))
+        )
         file_menu.addAction(config_button)
-        
+
         file_menu.addSeparator()
-        
+
         self.file_submenu_recent_dirs = file_menu.addMenu("Recent datasets")
         self.file_submenu_recent_dirs_separator = self.file_submenu_recent_dirs.addSeparator()
 
         self.clear_recent_dirs_button = qtg.QAction("Clear recently opened", self)
-        self.clear_recent_dirs_button.triggered.connect(lambda: [self.file_submenu_recent_dirs.removeAction(action) for action in self.file_submenu_recent_dirs.actions()[:-2]])
+        self.clear_recent_dirs_button.triggered.connect(
+            lambda: [self.file_submenu_recent_dirs.removeAction(action) for action in self.file_submenu_recent_dirs.actions()[:-2]]
+        )
         self.clear_recent_dirs_button.triggered.connect(self.update_config_file)
         self.file_submenu_recent_dirs.addAction(self.clear_recent_dirs_button)
 
@@ -822,7 +850,9 @@ class MainWindow(qtw.QMainWindow):
         self.file_submenu_recent_bkgs_separator = self.file_submenu_recent_bkgs.addSeparator()
 
         self.clear_recent_bkgs_button = qtg.QAction("Clear recently opened", self)
-        self.clear_recent_bkgs_button.triggered.connect(lambda: [self.file_submenu_recent_bkgs.removeAction(action) for action in self.file_submenu_recent_bkgs.actions()[:-2]])
+        self.clear_recent_bkgs_button.triggered.connect(
+            lambda: [self.file_submenu_recent_bkgs.removeAction(action) for action in self.file_submenu_recent_bkgs.actions()[:-2]]
+        )
         self.clear_recent_bkgs_button.triggered.connect(self.update_config_file)
         self.file_submenu_recent_bkgs.addAction(self.clear_recent_bkgs_button)
 
@@ -831,11 +861,13 @@ class MainWindow(qtw.QMainWindow):
         exit_button = qtg.QAction("Exit", self)
         exit_button.triggered.connect(self.closeEvent)
         file_menu.addAction(exit_button)
-        
+
 
         help_menu = menu.addMenu("Help")
         github_button = qtg.QAction("Source code", self)
-        github_button.triggered.connect(lambda: qtg.QDesktopServices.openUrl(qtc.QUrl("https://github.com/etnorth/BaSSET")))
+        github_button.triggered.connect(
+            lambda: qtg.QDesktopServices.openUrl(qtc.QUrl("https://github.com/etnorth/BaSSET"))
+        )
         help_menu.addAction(github_button)
 
         self.about_window = None
@@ -853,34 +885,44 @@ class MainWindow(qtw.QMainWindow):
         ################################
         ##### Function connections #####
         ################################
-        self.indirButton.clicked.connect(self.set_indir)
-        self.indirButton.clicked.connect(self.update_config_file)
-        self.getbkgButton.clicked.connect(self.set_bkgfile)
-        self.getbkgButton.clicked.connect(self.update_config_file)
-        self.bkgScale_DSpinBox.valueChanged.connect(self.update_config_file)
-        self.rmbkgButton.clicked.connect(lambda: self.bkgLabel.setText("Select a background for subtraction"))
-        self.rmbkgButton.clicked.connect(self.update_config_file)
-        self.inputformatGroup.buttonClicked.connect(self.update_config_file)
-        self.inputformatGroup.buttonClicked.connect(self.set_xrange)
-        self.convert2QCheckbox.clicked.connect(self.update_config_file)
-        self.convert2QCheckbox.clicked.connect(self.set_xrange)
-        self.wavelengthWidget.valueChanged.connect(self.update_config_file)
-        self.wavelengthWidget.valueChanged.connect(self.set_xrange)
-        self.plot_xmin_DSpinBox.valueChanged.connect(self.update_config_file)
-        self.plot_xmax_DSpinBox.valueChanged.connect(self.update_config_file)
-        self.plotDataButton.clicked.connect(self.plot_dataset)
-        self.algorithmGroup.buttonClicked.connect(self.display_algorithm_widgets)
-        self.algorithmGroup.buttonClicked.connect(self.update_config_file)
-        self.calc_err_CheckBox.clicked.connect(self.update_config_file)
-        self.numComponentsSlider.valueChanged.connect(lambda value: self.numComponentsLabel.setText(str(value)))
-        self.numComponentsSlider.valueChanged.connect(self.update_config_file)
-        self.numComponentsSlider.valueChanged.connect(self.display_reconstruction_widgets)
-        self.runAnalysisButton.clicked.connect(self.run_analysis)
+        self.indir_button.clicked.connect(self.set_indir)
+        self.indir_button.clicked.connect(self.update_config_file)
+        self.getbkg_button.clicked.connect(self.set_bkgfile)
+        self.getbkg_button.clicked.connect(self.update_config_file)
+        self.bkg_scale_spinbox.valueChanged.connect(self.update_config_file)
+        self.rm_bkg_button.clicked.connect(
+            lambda: self.bkg_label.setText("Select a background for subtraction")
+        )
+        self.rm_bkg_button.clicked.connect(self.update_config_file)
+        self.input_format_group.buttonClicked.connect(self.update_config_file)
+        self.input_format_group.buttonClicked.connect(self.set_widget_limits)
+        self.convert_to_q_checkbox.clicked.connect(self.update_config_file)
+        self.convert_to_q_checkbox.clicked.connect(self.set_widget_limits)
+        self.wavelength_widget.valueChanged.connect(self.update_config_file)
+        self.wavelength_widget.valueChanged.connect(self.set_widget_limits)
+        self.plot_xmin_spinbox.valueChanged.connect(self.update_config_file)
+        self.plot_xmax_spinbox.valueChanged.connect(self.update_config_file)
+        self.plot_data_button.clicked.connect(self.plot_dataset)
+        self.algorithm_group.buttonClicked.connect(self.display_algorithm_widgets)
+        self.algorithm_group.buttonClicked.connect(self.update_config_file)
+        self.calc_err_checkbox.clicked.connect(self.update_config_file)
+        self.comp_num_slider.valueChanged.connect(
+            lambda value: self.comp_num_label.setText(str(value))
+        )
+        self.comp_num_slider.valueChanged.connect(self.update_config_file)
+        self.comp_num_slider.valueChanged.connect(self.display_reconstruction_widgets)
+        self.run_analysis_button.clicked.connect(self.run_analysis)
 
     def closeEvent(self, event):
+        """
+        Redefines Qt's closeEvent to shut down entire app if main window closes
+        """
         qtw.QApplication.quit()
 
     def about_button_clicked(self):
+        """
+        Handles the About Window
+        """
         if self.about_window is None:
             self.about_window = AboutDialog(self)
             self.about_window.show()
@@ -889,125 +931,161 @@ class MainWindow(qtw.QMainWindow):
             self.about_window = None
 
     def display_algorithm_widgets(self):
-        for widget in (self.PCAalgorithmWidgets +
-                       self.NMFalgorithmWidgets +
-                       self.ICAalgorithmWidgets +
-                       self.SNMFalgorithmWidgets):
+        """
+        Shows/hides widgets based on chosen algorithm
+        """
+        for widget in (self.PCA_algorithm_widgets +
+                       self.NMF_algorithm_widgets +
+                       self.ICA_algorithm_widgets +
+                       self.SNMF_algorithm_widgets):
             widget.hide()
-        match self.algorithmGroup.checkedButton().text():
+        match self.algorithm_group.checkedButton().text():
             case "PCA":
-                """for widget in self.PCAalgorithmWidgets:
-                    widget.show()"""
-                self.PCAwhitenCheck.show()
-                self.PCAsolverDropdown.show()
-                self.PCAtolSpinbox.show() if self.PCAsolverDropdown.currentText=='arpack' else self.PCAtolSpinbox.hide()
-                self.PCAiterated_powerAutoCheckbox.show() if self.PCAsolverDropdown.currentText=='randomized' else self.PCAiterated_powerAutoCheckbox.hide()
-                self.PCAiterated_powerSpinbox.show() if self.PCAsolverDropdown.currentText=='randomized' else self.PCAiterated_powerSpinbox.hide()
-                self.PCAn_oversampledSpinbox.show() if self.PCAsolverDropdown.currentText=='randomized' else self.PCAn_oversampledSpinbox.hide()
-                self.PCApower_iteration_normalizerDropdown.show() if self.PCAsolverDropdown.currentText=='randomized' else self.PCApower_iteration_normalizerDropdown.hide()
+                self.PCA_whiten_checkbox.show()
+                self.PCA_solver_dropdown.show()
+                if self.PCA_solver_dropdown.currentText=='arpack':
+                    self.PCA_tol_spinbox.show()
+                else:
+                    self.PCA_tol_spinbox.hide()
+                if self.PCA_solver_dropdown.currentText=='randomized':
+                    self.PCA_iterated_power_auto_checkbox.show()
+                    self.PCA_iterated_power_spinbox.show()
+                    self.PCA_n_oversampled_spinbox.show()
+                    self.PCA_power_iteration_normalizer_dropdown.show()
+                else:
+                    self.PCA_iterated_power_auto_checkbox.hide()
+                    self.PCA_iterated_power_spinbox.hide()
+                    self.PCA_n_oversampled_spinbox.hide()
+                    self.PCA_power_iteration_normalizer_dropdown.hide()
             case "NMF":
-                for widget in self.NMFalgorithmWidgets:
+                for widget in self.NMF_algorithm_widgets:
                     widget.show()
-                self.NMFbeta_lossDropdown.show() if self.NMFsolverDropdown.currentText=='mu' else self.NMFbeta_lossDropdown.hide()
-                self.NMFl1_ratioDSpinbox.show() if self.NMFsolverDropdown.currentText=='cd' else self.NMFl1_ratioDSpinbox.show()
+                if self.NMF_solver_dropdown.currentText=='mu':
+                    self.NMF_beta_loss_dropdown.show()
+                else:
+                    self.NMF_beta_loss_dropdown.hide()
+                if self.NMF_solver_dropdown.currentText=='cd':
+                    self.NMF_l1_ratio_spinbox.show()
+                else:
+                    self.NMF_l1_ratio_spinbox.show()
             case "ICA":
-                for widget in self.ICAalgorithmWidgets:
+                for widget in self.ICA_algorithm_widgets:
                     widget.show()
             case "SNMF":
-                for widget in self.SNMFalgorithmWidgets:
+                for widget in self.SNMF_algorithm_widgets:
                     widget.show()
 
     def display_reconstruction_widgets(self):
-        """Displays widgets for reconstructions equaling number of components, and hides the rest"""
-        for widget in self.reconstruct_widgets[:self.numComponentsSlider.value()]:
+        """
+        Displays widgets for reconstructions equaling number of components, and hides the rest
+        """
+        for widget in self.reconstruct_widgets[:self.comp_num_slider.value()]:
             widget.show()
-        for widget in self.reconstruct_widgets[self.numComponentsSlider.value():]:
+        for widget in self.reconstruct_widgets[self.comp_num_slider.value():]:
             widget.hide()
 
     def set_indir(self, indir=None):
+        """
+        Sets the dataset directory, tests its validity and imports data
+        """
         if indir is None or indir is False: # Despite initialized as None, is in reality False from "Load directory" widget
-            if self.indirLabel.text() == "Select the folder containing your data files":
+            if self.indir_label.text() == "Select the folder containing your data files":
                 indir = str(qtw.QFileDialog.getExistingDirectory(self))
             else:
-                indir = str(qtw.QFileDialog.getExistingDirectory(self, directory=self.indirLabel.text()))
+                indir = str(qtw.QFileDialog.getExistingDirectory(self, directory=self.indir_label.text()))
             if indir == "": # If the operation was cancelled
-                return None
+                return
 
         # Confirm dataset can be imported by the program
         try:
-            self.angles, self.intensities = fileWorker.import_dataset(indir)
+            self.angles, self.intensities = file_worker.import_dataset(indir)
         except:
             print(f"An error occured when loading ...{'/'.join(indir.split("/")[-3:])}")
         else:
-            self.set_xrange(new=True)
-            self.indirLabel.setText(indir)
+            self.set_widget_limits(new=True)
+            self.indir_label.setText(indir)
             self.add_recentdir(indir)
             print("Dataset imported\n")
 
     def add_recentdir(self, recentdir):
+        """
+        Adds the relevant directory path to the list of recent dirs
+        """
         recentdir_button = qtg.QAction(recentdir, self)
         recentdir_button.triggered.connect(lambda: self.set_indir(recentdir_button.text()))
 
         if recentdir in (action.text() for action in self.file_submenu_recent_dirs.actions()): # Removes duplicate occurence
             self.file_submenu_recent_dirs.removeAction(next(action for action in self.file_submenu_recent_dirs.actions() if action.text()==recentdir))
-        elif len(self.file_submenu_recent_dirs.actions()) >= 10+2: # Deletes oldest recent if there are more than 10 
+        elif len(self.file_submenu_recent_dirs.actions()) >= 10+2: # Deletes oldest recent if there are more than 10
             self.file_submenu_recent_dirs.removeAction(self.file_submenu_recent_dirs.actions()[-3]) # -1 is "clear", -2 is separator, so -3 should be oldest "recent"
         self.file_submenu_recent_dirs.insertAction(self.file_submenu_recent_dirs.actions()[0], recentdir_button)
 
     def set_bkgfile(self, infile=None):
+        """
+        Sets the background file, tests its validity and imports it
+        """
         if infile is None or infile is False: # Load background widget passes "False"
-            if self.bkgLabel.text() == "Select a background for subtraction":
+            if self.bkg_label.text() == "Select a background for subtraction":
                 try:
-                    infile,_ = qtw.QFileDialog.getOpenFileName(self, directory=self.indirLabel.text())
+                    infile,_ = qtw.QFileDialog.getOpenFileName(self, directory=self.indir_label.text())
                 except:
                     infile,_ = qtw.QFileDialog.getOpenFileName(self)
             else:
-                infile,_ = qtw.QFileDialog.getOpenFileName(self, directory=os.path.dirname(self.bkgLabel.text()))
+                infile,_ = qtw.QFileDialog.getOpenFileName(self, directory=os.path.dirname(self.bkg_label.text()))
             if infile == "": # If the operation was cancelled
-                return None
+                return
 
         # Confirm bkgfile can be imported by the program
         try:
-            fileWorker.import_data(infile) # As single-file read is fast, data is not saved as attribute
+            file_worker.import_data(infile) # As single-file read is fast, data is not saved as attribute
         except:
             print(f"An error occured when loading {infile.split("/")[-1]}")
-        else: 
-            self.bkgLabel.setText(infile)
+        else:
+            self.bkg_label.setText(infile)
             self.add_recentbkg(infile)
             print("Background imported\n")
 
     def add_recentbkg(self, recentbkg):
+        """
+        Adds the relevant background filepath to the list of recent bkgs
+        """
         recentbkg_button = qtg.QAction(recentbkg, self)
         recentbkg_button.triggered.connect(lambda: self.set_bkgfile(recentbkg_button.text()))
 
         if recentbkg in (action.text() for action in self.file_submenu_recent_bkgs.actions()): # Removes duplicate occurence
             self.file_submenu_recent_bkgs.removeAction(next(action for action in self.file_submenu_recent_bkgs.actions() if action.text()==recentbkg))
-        elif len(self.file_submenu_recent_bkgs.actions()) >= 10+2: # Deletes oldest recent if there are more than 10 
+        elif len(self.file_submenu_recent_bkgs.actions()) >= 10+2: # Deletes oldest recent if there are more than 10
             self.file_submenu_recent_bkgs.removeAction(self.file_submenu_recent_bkgs.actions()[-3]) # -1 is "clear", -2 is separator, so -3 should be oldest "recent"
         self.file_submenu_recent_bkgs.insertAction(self.file_submenu_recent_bkgs.actions()[0], recentbkg_button)
 
-    def set_xrange(self, new=False):
-        if self.convert2QCheckbox.isChecked():
-            min = funcs.theta_to_Q(np.min(self.angles),self.wavelengthWidget.value())
-            max = funcs.theta_to_Q(np.max(self.angles),self.wavelengthWidget.value())
+    def set_widget_limits(self, new=False):
+        """
+        Sets widget limits based on imported data
+        """
+        if self.convert_to_q_checkbox.isChecked():
+            xmin = funcs.theta_to_q(np.min(self.angles),self.wavelength_widget.value())
+            xmax = funcs.theta_to_q(np.max(self.angles),self.wavelength_widget.value())
         else:
-            min = np.min(self.angles)
-            max = np.max(self.angles)
+            xmin = np.min(self.angles)
+            xmax = np.max(self.angles)
 
-        self.plot_xmin_DSpinBox.setMinimum(min)
-        self.plot_xmin_DSpinBox.setMaximum(max)
-        self.plot_xmax_DSpinBox.setMinimum(min)
-        self.plot_xmax_DSpinBox.setMaximum(max)
+        self.plot_xmin_spinbox.setMinimum(xmin)
+        self.plot_xmin_spinbox.setMaximum(xmax)
+        self.plot_xmax_spinbox.setMinimum(xmin)
+        self.plot_xmax_spinbox.setMaximum(xmax)
 
         if new:
-            self.plot_xmin_DSpinBox.setValue(self.plot_xmin_DSpinBox.minimum())
-            self.plot_xmax_DSpinBox.setValue(self.plot_xmax_DSpinBox.maximum())
-        
+            self.plot_xmin_spinbox.setValue(self.plot_xmin_spinbox.minimum())
+            self.plot_xmax_spinbox.setValue(self.plot_xmax_spinbox.maximum())
+
         for widget in self.reconstruct_widgets:
             widget.setMaximum(len(self.angles))
 
     def read_config_file(self):
-        with open(self.configfile, encoding='utf-8') as infile:
+        """
+        Reads BaSSET config file to set widget values
+        """
+        with open(self.configfile, 'r', encoding='utf-8') as infile:
             lines = infile.readlines()
             for line in lines:
                 line = line.replace('\n','')
@@ -1018,113 +1096,120 @@ class MainWindow(qtw.QMainWindow):
                     match name:
                         case "Current file directory":
                             if os.path.exists(value):
-                                self.indirLabel.setText(value)
+                                self.indir_label.setText(value)
                                 self.set_indir(value)
                             else:
                                 print(f"{value} is not a valid directory")
                         case "Recent directories":
-                            for dir in reversed(value.split(", ")):
-                                if dir != "":
-                                    self.add_recentdir(dir)
+                            for indir in reversed(value.split(", ")):
+                                if indir != "":
+                                    self.add_recentdir(indir)
                         case "Background file":
-                            self.bkgLabel.setText(value)
+                            self.bkg_label.setText(value)
                         case "Background scale":
-                            self.bkgScale_DSpinBox.setValue(float(value))
+                            self.bkg_scale_spinbox.setValue(float(value))
                         case "Recent backgrounds":
                             for bkg in reversed(value.split(", ")):
                                 if bkg != "":
                                     self.add_recentbkg(bkg)
                         case "Input format":
-                            for button in self.inputformatGroup.buttons():
+                            for button in self.input_format_group.buttons():
                                 if value == button.text():
                                     button.setChecked(True)
-                            if value not in [button.text() for button in self.inputformatGroup.buttons()]:
+                            if value not in [button.text() for button in self.input_format_group.buttons()]:
                                 print(f"Did not recognize \"{value}\" as an input format.\n" \
-                                      "Using default input format") #raise ValueError(f"Did not recognize \"{value}\" as an input format")
+                                      "Using default input format")
                         case "Convert to Q":
                             if value=="True":
-                                self.convert2QCheckbox.setChecked(True)
+                                self.convert_to_q_checkbox.setChecked(True)
                             elif value=="False":
-                                self.convert2QCheckbox.setChecked(False)
+                                self.convert_to_q_checkbox.setChecked(False)
                             else:
                                 print("Did not recognize {line} as True/False")
                         case "Wavelength":
-                            self.wavelengthWidget.blockSignals(True) # blockSignals ensures .setValue doesn't trigger valeuChanged and updates the config, overwriting the load file
-                            self.wavelengthWidget.setValue(float(value))
-                            self.wavelengthWidget.blockSignals(False)
+                            self.wavelength_widget.blockSignals(True) # Ensures .setValue doesn't trigger valueChanged
+                            self.wavelength_widget.setValue(float(value))
+                            self.wavelength_widget.blockSignals(False)
                         case "X-axis range":
                             xmin, xmax = value.split(",")
-                            self.plot_xmin_DSpinBox.setValue(float(xmin))
-                            self.plot_xmax_DSpinBox.setValue(float(xmax))
+                            self.plot_xmin_spinbox.setValue(float(xmin))
+                            self.plot_xmax_spinbox.setValue(float(xmax))
                         case "Algorithm":
-                            for button in self.algorithmGroup.buttons():
+                            for button in self.algorithm_group.buttons():
                                 if value == button.text():
                                     button.setChecked(True)
-                            if value not in [button.text() for button in self.algorithmGroup.buttons()]:
+                            if value not in [button.text() for button in self.algorithm_group.buttons()]:
                                 print(f"Did not recognize \"{value}\" as an algorithm\n" \
-                                      "Using default algorithm") #raise ValueError(f"Did not recognize \"{value}\" as an algorithm")
+                                      "Using default algorithm")
                         case "Number of components":
-                            self.numComponentsSlider.blockSignals(True) # blockSignals ensures .setValue doesn't trigger valeuChanged and updates the config, overwriting the load file
-                            self.numComponentsSlider.setValue(int(value))
-                            self.numComponentsLabel.setText(value)
-                            self.numComponentsSlider.blockSignals(False)
+                            self.comp_num_slider.blockSignals(True) # Ensures .setValue doesn't trigger valeuChanged
+                            self.comp_num_slider.setValue(int(value))
+                            self.comp_num_label.setText(value)
+                            self.comp_num_slider.blockSignals(False)
                         case "Calculate errors":
                             if value=="True":
-                                self.calc_err_CheckBox.setChecked(True)
+                                self.calc_err_checkbox.setChecked(True)
                             elif value=="False":
-                                self.calc_err_CheckBox.setChecked(False)
+                                self.calc_err_checkbox.setChecked(False)
                             else:
                                 print("Did not recognize {line} as True/False")
                         case _:
                             print(f"\"{line}\" could not be parsed\n" \
                                   "Ignoring.")
-        return None
 
     def update_config_file(self):
+        """
+        Updates BaSSET config file based on widget values
+        """
         with open(self.configfile, "w", encoding='utf-8') as outfile:
-            outfile.write(f"Current file directory: {self.indirLabel.text() if self.indirLabel.text()!='Select the folder containing your data files' else ''}\n")
+            outfile.write(f"Current file directory: {self.indir_label.text() if self.indir_label.text()!='Select the folder containing your data files' else ''}\n")
             outfile.write(f"Recent directories: {', '.join(action.text() for action in self.file_submenu_recent_dirs.actions()[:-2])}\n")
-            outfile.write(f"Background file: {self.bkgLabel.text() if self.bkgLabel.text()!='Select a background for subtraction' else ''}\n")
-            outfile.write(f"Background scale: {self.bkgScale_DSpinBox.value():.3f}\n")
+            outfile.write(f"Background file: {self.bkg_label.text() if self.bkg_label.text()!='Select a background for subtraction' else ''}\n")
+            outfile.write(f"Background scale: {self.bkg_scale_spinbox.value():.3f}\n")
             outfile.write(f"Recent backgrounds: {', '.join(action.text() for action in self.file_submenu_recent_bkgs.actions()[:-2])}\n")
-            outfile.write(f"Input format: {self.inputformatGroup.checkedButton().text()}\n")
-            outfile.write(f"Convert to Q: {'True' if self.convert2QCheckbox.isChecked() else 'False'}\n")
-            outfile.write(f"Wavelength: {self.wavelengthWidget.value():.6f}\n")
-            outfile.write(f"X-axis range: {self.plot_xmin_DSpinBox.value():.2f},{self.plot_xmax_DSpinBox.value():.2f}\n")
-            outfile.write(f"Algorithm: {self.algorithmGroup.checkedButton().text()}\n")
-            outfile.write(f"Number of components: {self.numComponentsSlider.value()}\n")
-            outfile.write(f"Calculate errors: {'True' if self.calc_err_CheckBox.isChecked() else 'False'}\n")
+            outfile.write(f"Input format: {self.input_format_group.checkedButton().text()}\n")
+            outfile.write(f"Convert to Q: {'True' if self.convert_to_q_checkbox.isChecked() else 'False'}\n")
+            outfile.write(f"Wavelength: {self.wavelength_widget.value():.6f}\n")
+            outfile.write(f"X-axis range: {self.plot_xmin_spinbox.value():.2f},{self.plot_xmax_spinbox.value():.2f}\n")
+            outfile.write(f"Algorithm: {self.algorithm_group.checkedButton().text()}\n")
+            outfile.write(f"Number of components: {self.comp_num_slider.value()}\n")
+            outfile.write(f"Calculate errors: {'True' if self.calc_err_checkbox.isChecked() else 'False'}\n")
 
     def plot_dataset(self):
+        """
+        Plots the input dataset as a waterfall plot
+        """
         print("Plotting input dataset\n")
         try:
-            if self.angles==None or self.intensities==None:
-              self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text())
-        except ValueError: # If initialized as array with more than one elements, the truth value is ambiguous
-            if self.angles.all()==None or self.intensities.all()==None:
-                self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text())
+            if self.angles is None or self.intensities is None:
+                self.angles, self.intensities = file_worker.import_dataset(self.indir_label.text())
+        except ValueError: # If init as array with more than one elements, truth value is ambiguous
+            if self.angles.all() is None or self.intensities.all() is None:
+                self.angles, self.intensities = file_worker.import_dataset(self.indir_label.text())
 
         angles = self.angles.copy()
         intensities = self.intensities.copy()
 
-        if self.convert2QCheckbox.isChecked():
+        if self.convert_to_q_checkbox.isChecked():
             xlabel = "Q [Å⁻¹]"
-            angles = funcs.theta_to_Q(angles, self.wavelengthWidget.value())
+            angles = funcs.theta_to_q(angles, self.wavelength_widget.value())
         else:
-            xlabel = self.inputformatGroup.checkedButton().text()
+            xlabel = self.input_format_group.checkedButton().text()
 
-        if self.bkgLabel.text() != "Select a background for subtraction":
+        if self.bkg_label.text() != "Select a background for subtraction":
             try:
-                _, bkgintensity = fileWorker.import_data(self.bkgLabel.text())
+                _, bkgintensity = file_worker.import_data(self.bkg_label.text())
             except:
-                print("! Could not read background. Fix/remove background and try again")
-                return None
+                print("! Could not read background." \
+                      "Fix/remove background and try again")
+                return
             try:
                 for i, intensity in enumerate(intensities):
-                    intensities[i] = intensity - bkgintensity*self.bkgScale_DSpinBox.value()
+                    intensities[i] = intensity - bkgintensity*self.bkg_scale_spinbox.value()
             except:
-                print("! Could not subtract background from data. Fix/remove background and try again")
-                return None
+                print("! Could not subtract background from data." \
+                      "Fix/remove background and try again")
+                return
 
         fig = plt.figure()
         cmap = plt.get_cmap('inferno')
@@ -1135,13 +1220,12 @@ class MainWindow(qtw.QMainWindow):
         for i in range(len(intensities)-1, -1, -1):
             yaxis = intensities[i]+i*stagger_factor
             plt.plot(angles[i], yaxis, color=colors[i])
-            if np.max(yaxis)>stagger_max:
-                stagger_max = np.max(yaxis)
+            stagger_max = max(stagger_max,np.max(yaxis))
         plt.xlabel(xlabel)
         plt.ylabel("Intensity (staggered) [A.U.]")
-        plt.xlim(max(self.plot_xmin_DSpinBox.value(), min(angles[i])),
-                 min((self.plot_xmax_DSpinBox.value(), max(angles[i]))))
-        if self.inputformatGroup.checkedButton().text()=="r [Å]":
+        plt.xlim(max(self.plot_xmin_spinbox.value(), min(angles[i])),
+                 min((self.plot_xmax_spinbox.value(), max(angles[i]))))
+        if self.input_format_group.checkedButton().text()=="r [Å]":
             plt.ylim(np.min(intensities)*1.005, stagger_max*1.005)
         else:
             plt.ylim(np.min(intensities), stagger_max*1.005)
@@ -1158,166 +1242,171 @@ class MainWindow(qtw.QMainWindow):
                 manager.full_screen_toggle() # Fallback for some backends
 
         fig.show()
-        if self.export_results_CheckBox.isChecked():
-            if not os.path.exists(f"{self.indirLabel.text()}/BaSSET_results"):
-                os.mkdir(f"{self.indirLabel.text()}/BaSSET_results")
-            fig.savefig(f"{self.indirLabel.text()}/BaSSET_results/input_dataset.png")
-        
-        return None
+        if self.export_results_checkbox.isChecked():
+            if not os.path.exists(f"{self.indir_label.text()}/BaSSET_results"):
+                os.mkdir(f"{self.indir_label.text()}/BaSSET_results")
+            fig.savefig(f"{self.indir_label.text()}/BaSSET_results/input_dataset.png")
 
     def run_analysis(self):
+        """
+        Performs necessary pre-processing,
+        passes analysis to algorithms,
+        and sends results to plotting
+        """
         print("Beginning analysis...")
-        numComponents = self.numComponentsSlider.value()
-        
+        comp_num = self.comp_num_slider.value()
+
         try:
-            if self.angles==None or self.intensities==None:
-              self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text())
-        except ValueError: # If initialized as array with more than one elements, the truth value is ambiguous
-            if self.angles.all()==None or self.intensities.all()==None:
-                self.angles, self.intensities = fileWorker.import_dataset(self.indirLabel.text())
+            if self.angles is None or self.intensities is None:
+                self.angles, self.intensities = file_worker.import_dataset(self.indir_label.text())
+        except ValueError: # If init as array with more than one elements, truth value is ambiguous
+            if self.angles.all() is None or self.intensities.all() is None:
+                self.angles, self.intensities = file_worker.import_dataset(self.indir_label.text())
 
         angles = self.angles.copy()
         intensities = self.intensities.copy()
 
-        if self.bkgLabel.text() != "Select a background for subtraction":
+        if self.bkg_label.text() != "Select a background for subtraction":
             try:
-                _, bkgintensity = fileWorker.import_data(self.bkgLabel.text())
+                _, bkgintensity = file_worker.import_data(self.bkg_label.text())
             except:
-                print("! Could not read background. Fix/remove background and try again")
-                return None
+                print("! Could not read background." \
+                      "Fix/remove background and try again")
+                return
             try:
                 for i, intensity in enumerate(intensities):
-                    intensities[i] = intensity - bkgintensity*self.bkgScale_DSpinBox.value()
+                    intensities[i] = intensity - bkgintensity*self.bkg_scale_spinbox.value()
             except:
-                print("! Could not subtract background from data. Fix/remove background and try again")
-                return None
-            
-        if self.convert2QCheckbox.isChecked():
-            angles = funcs.theta_to_Q(angles, self.wavelengthWidget.value())
+                print("! Could not subtract background from data." \
+                      "Fix/remove background and try again")
+                return
 
-        if self.plot_xmin_DSpinBox.value() != self.plot_xmax_DSpinBox.value(): # Crop according to converted data
-            xmin_index = np.searchsorted(angles[0], self.plot_xmin_DSpinBox.value(), side='left')
-            xmax_index = np.searchsorted(angles[0], self.plot_xmax_DSpinBox.value(), side='right')
-            angles = angles[:,xmin_index:xmax_index] # Cut unconverted data for later
+        if self.convert_to_q_checkbox.isChecked():
+            angles = funcs.theta_to_q(angles, self.wavelength_widget.value())
+
+        # Crop according to converted data
+        if self.plot_xmin_spinbox.value() != self.plot_xmax_spinbox.value():
+            xmin_index = np.searchsorted(angles[0], self.plot_xmin_spinbox.value(), side='left')
+            xmax_index = np.searchsorted(angles[0], self.plot_xmax_spinbox.value(), side='right')
+            angles = angles[:,xmin_index:xmax_index]
             intensities = intensities[:,xmin_index:xmax_index]
 
         errors = None
         lift_factor = None
         stretch = None
-        match self.algorithmGroup.checkedButton().text():
+        match self.algorithm_group.checkedButton().text():
             case "PCA":
                 fitted, transformed, reconstructed = analysis.PCA_analysis(
                     intensities,
-                    numComponents,
-                    whiten=self.PCAwhitenCheck.isChecked(),
-                    svd_solver=self.PCAsolverDropdown.currentText(),
-                    tol=self.PCAtolSpinbox.value(),
-                    iterated_power='auto' if self.PCAiterated_powerAutoCheckbox.isChecked else self.PCAiterated_powerSpinbox.value(),
-                    n_oversamples=self.PCAn_oversampledSpinbox.value(),
-                    power_iteration_normalizer=self.PCApower_iteration_normalizerDropdown.currentText()
+                    comp_num,
+                    whiten=self.PCA_whiten_checkbox.isChecked(),
+                    svd_solver=self.PCA_solver_dropdown.currentText(),
+                    tol=self.PCA_tol_spinbox.value(),
+                    iterated_power='auto' if self.PCA_iterated_power_auto_checkbox.isChecked else self.PCA_iterated_power_spinbox.value(),
+                    n_oversamples=self.PCA_n_oversampled_spinbox.value(),
+                    power_iteration_normalizer=self.PCA_power_iteration_normalizer_dropdown.currentText()
                 )
             case "NMF":
                 fitted, transformed, reconstructed, errors, lift_factor = analysis.NMF_analysis(
                     intensities,
-                    numComponents,
-                    init=self.NMFinitDropdown.currentText(),
-                    solver=self.NMFsolverDropdown.currentText(),
-                    beta_loss=self.NMFbeta_lossDropdown.currentText() if self.NMFsolverDropdown.currentText()=="mu" else "frobenius",
-                    tol=self.NMFtolSpinbox.value(),
-                    max_iter=self.NMFmax_iterSpinbox.value(),
-                    alpha_W=self.NMFalpha_WDSpinbox.value(),
-                    alpha_H='same' if self.NMFalpha_HsameCheckbox.isChecked() else self.NMFalpha_HDSpinbox.value(),
-                    l1_ratio=self.NMFl1_ratioDSpinbox.value(),
-                    calc_err=self.calc_err_CheckBox.isChecked(),
-                    rescale=self.NMFrescale_CheckBox.isChecked()
+                    comp_num,
+                    init=self.NMF_init_dropdown.currentText(),
+                    solver=self.NMF_solver_dropdown.currentText(),
+                    beta_loss=self.NMF_beta_loss_dropdown.currentText() if self.NMF_solver_dropdown.currentText()=="mu" else "frobenius",
+                    tol=self.NMF_tol_spinbox.value(),
+                    max_iter=self.NMF_max_iter_spinbox.value(),
+                    alpha_W=self.NMF_alpha_W_spinbox.value(),
+                    alpha_H='same' if self.NMF_alpha_H_same_checkbox.isChecked() else self.NMF_alpha_H_spinbox.value(),
+                    l1_ratio=self.NMF_l1_ratio_spinbox.value(),
+                    calc_err=self.calc_err_checkbox.isChecked(),
+                    rescale=self.NMF_rescale_checkbox.isChecked()
                 )
             case "ICA":
                 fitted, transformed, reconstructed = analysis.ICA_analysis(
                     intensities,
-                    numComponents,
-                    algorithm=self.ICAalgorithmDropdown.currentText(),
-                    whiten=False if self.ICAwhitenDropdown.currentText()=='False' else self.ICAwhitenDropdown.currentText(),
-                    fun=self.ICAfunDropdown.currentText(),
-                    max_iter=self.ICAmax_iterSpinbox.value(),
-                    tol=self.ICAtolSpinbox.value(),
-                    whiten_solver=self.ICAwhiten_solverDropdown.currentText(),
-                    calc_err=self.calc_err_CheckBox.isChecked()
+                    comp_num,
+                    algorithm=self.ICA_algorithm_dropdown.currentText(),
+                    whiten=False if self.ICA_whiten_dropdown.currentText()=='False' else self.ICA_whiten_dropdown.currentText(),
+                    fun=self.ICA_fun_dropdown.currentText(),
+                    max_iter=self.ICA_max_iter_spinbox.value(),
+                    tol=self.ICA_tol_spinbox.value(),
+                    whiten_solver=self.ICA_whiten_solver_dropdown.currentText(),
+                    calc_err=self.calc_err_checkbox.isChecked()
                 )
             case "SNMF":
                 fitted, transformed, reconstructed, errors, stretch = analysis.SNMF_analysis(
                     intensities,
-                    numComponents,
-                    min_iter=self.SNMFmin_iterSpinbox.value(),
-                    max_iter=self.SNMFmax_iterSpinbox.value(),
-                    tol=self.SNMFtol_SciSpinbox.value(),
-                    rho=self.SNMFrho_SciSpinbox.value(),
-                    eta=self.SNMFeta_DSpinbox.value(),
-                    calc_err=self.calc_err_CheckBox.isChecked()
+                    comp_num,
+                    min_iter=self.SNMF_min_iter_spinbox.value(),
+                    max_iter=self.SNMF_max_iter_spinbox.value(),
+                    tol=self.SNMF_tol_spinbox.value(),
+                    rho=self.SNMF_rho_spinbox.value(),
+                    eta=self.SNMF_eta_spinbox.value(),
+                    calc_err=self.calc_err_checkbox.isChecked()
                 )
 
         print("Analysis completed\n")
-        self.plot_analysis(numComponents, angles, intensities, fitted, transformed, reconstructed, errors, lift_factor, stretch)
+        self.plot_analysis(comp_num, angles, intensities, fitted, transformed, reconstructed, errors, lift_factor, stretch)
 
-    def plot_analysis(self, numComponents, angles, intensities, fitted, transformed, reconstructed, errors=None, lift_factor=None, stretch=None):
-        if self.convert2QCheckbox.isChecked():
+    def plot_analysis(self, comp_num, angles, intensities, fitted, transformed, reconstructed, errors=None, lift_factor=None, stretch=None):
+        """
+        Plots analysis results
+        """
+        if self.convert_to_q_checkbox.isChecked():
             xlabel = "Q [Å⁻¹]"
         else:
-            xlabel = self.inputformatGroup.checkedButton().text()
+            xlabel = self.input_format_group.checkedButton().text()
 
-        reconNum = []
+        recon_num = []
         for widget in self.reconstruct_widgets:
             if widget.isVisible():
-                reconNum.append(widget.value()-1)
-        if any(x>len(reconstructed) for x in reconNum):
-            print("Reconstruction scan larger than number of scans. Defaulting to uniform distribution")
-            reconNum[0]=-1
+                recon_num.append(widget.value()-1)
+        if any(x>len(reconstructed) for x in recon_num):
+            print("Reconstruction scan larger than number of scans." \
+                  "Defaulting to uniform distribution")
+            recon_num[0]=-1
 
-        if any(x==-1 for x in reconNum): # If any reconstuction widgets are 0, meaning -1 due to the line above
-            reconNum = list(np.linspace(0, len(reconstructed), numComponents-1, endpoint=False, dtype=int))
-            reconNum.append(len(reconstructed)-1)  # By using numComponents-1 and appending the end-point we get first and last scan
+        if any(x==-1 for x in recon_num): # any reconstuction widgets are 0, is -1 due to line above
+            recon_num = list(np.linspace(0, len(reconstructed), comp_num-1, endpoint=False, dtype=int))
+            recon_num.append(len(reconstructed)-1) # append end-point to get first and last scan
 
         cmap = plt.get_cmap('inferno')
-        colors = cmap(np.linspace(0, 0.8, numComponents))
-
-        #fig, axs = plt.subplots(3, numComponents, layout="constrained", )#, gridspec_kw = {"hspace":0.1})
+        colors = cmap(np.linspace(0, 0.8, comp_num))
 
         fig = plt.figure()
-        gs = fig.add_gridspec(3, numComponents)
-        if (numComponents % 2) == 0:
-            ax_scores = fig.add_subplot(gs[2,0:(numComponents // 2)])
-            ax_errors = fig.add_subplot(gs[2,(numComponents // 2):])
+        gs = fig.add_gridspec(3, comp_num)
+        if (comp_num % 2) == 0:
+            ax_scores = fig.add_subplot(gs[2,0:(comp_num // 2)])
+            ax_errors = fig.add_subplot(gs[2,(comp_num // 2):])
         else:
-            ax_scores = fig.add_subplot(gs[2,0:(numComponents // 2)+1])
-            ax_errors = fig.add_subplot(gs[2,(numComponents // 2)+1:])
+            ax_scores = fig.add_subplot(gs[2,0:(comp_num // 2)+1])
+            ax_errors = fig.add_subplot(gs[2,(comp_num // 2)+1:])
 
-        """
-        ax_ylabel = fig.add_subplot(gs[0:2,:])
-        ax_ylabel.set_frame_on(False)
-        ax_ylabel.tick_params(axis='both', which='both', bottom=False, left=False, labelbottom=False, labelleft=False)
-        ax_ylabel.set_ylabel("Intensity [A.U.]", labelpad=40, fontsize='large')
-        """
-
-        for i in range(numComponents):
+        for i in range(comp_num):
             ax_comp = fig.add_subplot(gs[0, i])
             ax_recon = fig.add_subplot(gs[1, i])
             ax_comp.plot(angles[i], fitted.components_[i], "k")
             ax_comp.set_title(f"Component {i+1}")
             ax_comp.set_xlabel(xlabel)
             ax_comp.set_xlim(np.min(angles[i]), np.max(angles[i]))
-            ax_comp.set_ylim(min(fitted.components_[i]) - max(fitted.components_[i])*0.05, max(fitted.components_[i])*1.05)
+            ax_comp.set_ylim(min(fitted.components_[i]) - max(fitted.components_[i])*0.05,
+                             max(fitted.components_[i])*1.05
+            )
 
-            difference = intensities[reconNum[i]]-reconstructed[reconNum[i]]
-            distance = np.abs(min(np.min(reconstructed[reconNum[i]]),np.min(intensities[reconNum[i]]))-np.max(difference))
- 
-            ax_recon.plot(angles[reconNum[i]], reconstructed[reconNum[i]], color="#DD0000", label="Reconstructed")
-            ax_recon.plot(angles[reconNum[i]], intensities[reconNum[i]], "k:", label="Original")
-            ax_recon.plot(angles[reconNum[i]], difference-distance*1.05, color="#2EC483", label="Difference")
+            difference = intensities[recon_num[i]]-reconstructed[recon_num[i]]
+            distance = np.abs(min(np.min(reconstructed[recon_num[i]]),
+                                  np.min(intensities[recon_num[i]]))-np.max(difference)
+            )
+
+            ax_recon.plot(angles[recon_num[i]], reconstructed[recon_num[i]], color="#DD0000", label="Reconstructed")
+            ax_recon.plot(angles[recon_num[i]], intensities[recon_num[i]], "k:", label="Original")
+            ax_recon.plot(angles[recon_num[i]], difference-distance*1.05, color="#2EC483", label="Difference")
             ax_recon.ticklabel_format(axis="y", style="sci", scilimits=[0,0])
-            ax_recon.set_title(f"Scan {reconNum[i]+1}") # Reconstruction num
+            ax_recon.set_title(f"Scan {recon_num[i]+1}") # Reconstruction num
             ax_recon.set_xlabel(xlabel)
             ax_recon.sharex(ax_comp)
-            ax_recon.set_ylim((np.min(difference)-distance)*1.05 - max(np.max(intensities[reconNum[i]]),np.max(reconstructed[reconNum[i]]))*0.05,
-                              max(np.max(intensities[reconNum[i]]),np.max(reconstructed[reconNum[i]]))*1.05)
+            ax_recon.set_ylim((np.min(difference)-distance)*1.05 - max(np.max(intensities[recon_num[i]]),np.max(reconstructed[recon_num[i]]))*0.05,
+                              max(np.max(intensities[recon_num[i]]),np.max(reconstructed[recon_num[i]]))*1.05)
 
             ax_scores.plot(np.arange(1,len(angles)+1), transformed[:,i], color=colors[i], label=f"Comp. {i+1}")
 
@@ -1326,29 +1415,29 @@ class MainWindow(qtw.QMainWindow):
             else:
                 ax_comp.sharex(ax_comp_master)
 
-        for i in range(len(reconNum)):
-            ax_scores.axvline(reconNum[i]+1, color="k", linestyle=":", label="Recons" if i==0 else '')
+        for i, recon in enumerate(recon_num):
+            ax_scores.axvline(recon+1, color="k", linestyle=":", label="Recons" if i==0 else '')
         ax_scores.ticklabel_format(axis="y", style="sci", scilimits=[0,0])
         ax_scores.legend()
         l, h = ax_recon.get_legend_handles_labels()
         ax_errors.legend(l, h, title="↑", frameon=True)
         ax_scores.set_xlabel("Scan #")
         ax_scores.set_xlim(1, len(angles))
-        
-        if self.NMFrescale_CheckBox.isChecked() and self.algorithmGroup.checkedButton().text()=="NMF":
+
+        if self.NMF_rescale_checkbox.isChecked() and self.algorithm_group.checkedButton().text()=="NMF":
             ax_scores.set_title("Normalized Scores")
             ax_scores.set_ylim(-0.01, 1.01)
         else:
             ax_scores.set_title("Scores")
             ax_scores.set_ylim(min(0,np.min(transformed)), np.max(transformed))
 
-        match self.algorithmGroup.checkedButton().text():
+        match self.algorithm_group.checkedButton().text():
             case "PCA":
-                ax_errors.plot(np.arange(1, min(10,min(np.shape(intensities)))+1), fitted.explained_variance_ratio_*100, "ko--")
+                ax_errors.plot(np.arange(1, min(10,np.shape(intensities))+1), fitted.explained_variance_ratio_*100, "ko--")
                 ax_errors.set_title("Explained variances")
             case "NMF":
                 if errors is not None:
-                    ax_errors.plot(np.arange(1, min(10,min(np.shape(intensities)))+1), errors, "ko--")
+                    ax_errors.plot(np.arange(1, min(10,np.shape(intensities))+1), errors, "ko--")
                     ax_errors.set_title("Reconstruction error")
             case "ICA":
                 pass
@@ -1364,7 +1453,7 @@ class MainWindow(qtw.QMainWindow):
 
         ax_errors.set_xlabel("# of Components")
 
-        fig.canvas.manager.set_window_title(f"{self.algorithmGroup.checkedButton().text()} ({numComponents}): x:({self.plot_xmin_DSpinBox.value()},{self.plot_xmax_DSpinBox.value()})")
+        fig.canvas.manager.set_window_title(f"{self.algorithm_group.checkedButton().text()} ({comp_num}): x:({self.plot_xmin_spinbox.value()},{self.plot_xmax_spinbox.value()})")
 
         # Maximize window
         manager = plt.get_current_fig_manager()
@@ -1378,151 +1467,93 @@ class MainWindow(qtw.QMainWindow):
 
         fig.show()
 
-        if self.export_results_CheckBox.isChecked(): self.export_results(angles, intensities, fitted, transformed, reconstructed, fig, errors, lift_factor, stretch)
-        return None
+        if self.export_results_checkbox.isChecked():
+            self.export_results(angles, intensities, fitted, transformed, reconstructed, fig, errors, lift_factor, stretch)
 
     def write_summary(self, results_path, errors=None, lift_factor=None):
+        """
+        Writes summary of analysis
+        """
         with open(f"{results_path}/summary.txt", "w", encoding='utf-8') as outfile:
-            outfile.write(f"Summary of {self.numComponentsSlider.value()} component {self.algorithmGroup.checkedButton().text()} analysis of data in \"...{self.indirLabel.text()[-51:]}\"\n\n")
-            outfile.write(f"Data was analyzed from {self.plot_xmin_DSpinBox.value()} to {self.plot_xmax_DSpinBox.value()} {self.inputformatGroup.checkedButton().text()}\n")
+            outfile.write(f"Summary of {self.comp_num_slider.value()} component {self.algorithm_group.checkedButton().text()} analysis of data in \"...{self.indir_label.text()[-51:]}\"\n\n")
+            outfile.write(f"Data was analyzed from {self.plot_xmin_spinbox.value()} to {self.plot_xmax_spinbox.value()} {self.input_format_group.checkedButton().text()}\n")
             outfile.write("The following algorithm parameters where used:\n")
-            match self.algorithmGroup.checkedButton().text():
+            match self.algorithm_group.checkedButton().text():
                 case "PCA":
-                    outfile.write(f"Whiten: {self.PCAwhitenCheck.isChecked()}\n")
-                    outfile.write(f"SVD solver: {self.PCAsolverDropdown.currentText()}\n")
-                    if self.PCAsolverDropdown.currentText()=="arpack": outfile.write(f"Tolerance: {self.PCAtolSpinbox.value()}\n")
-                    if self.PCAsolverDropdown.currentText()=="randomized":
-                        outfile.write(f"# of iterations (Power method): {self.PCAiterated_powerSpinbox() if self.PCAiterated_powerAutoCheckbox.isChecked() else 'auto'}\n")
-                        outfile.write(f"Additional vectors to sample data: {self.PCAn_oversampledSpinbox.value()}\n")
-                        outfile.write(f"Power iteration normalizer: {self.PCApower_iteration_normalizerDropdown.currentText()}\n")
-                        outfile.write(f"\nThe PCA explained variance for {self.numComponentsSlider.value()} components was: {errors[self.numComponentsSlider.value()+1]}\n")
+                    outfile.write(f"Whiten: {self.PCA_whiten_checkbox.isChecked()}\n")
+                    outfile.write(f"SVD solver: {self.PCA_solver_dropdown.currentText()}\n")
+                    if self.PCA_solver_dropdown.currentText()=="arpack":
+                        outfile.write(f"Tolerance: {self.PCA_tol_spinbox.value()}\n")
+                    if self.PCA_solver_dropdown.currentText()=="randomized":
+                        outfile.write(f"# of iterations (Power method): {self.PCA_iterated_power_spinbox() if self.PCA_iterated_power_auto_checkbox.isChecked() else 'auto'}\n")
+                        outfile.write(f"Additional vectors to sample data: {self.PCA_n_oversampled_spinbox.value()}\n")
+                        outfile.write(f"Power iteration normalizer: {self.PCA_power_iteration_normalizer_dropdown.currentText()}\n")
+                        outfile.write(f"\nThe PCA explained variance for {self.comp_num_slider.value()} components was: {errors[self.comp_num_slider.value()+1]}\n")
                 case "NMF":
-                    outfile.write(f"Initialization method: {self.NMFinitDropdown.currentText()}\n")
-                    outfile.write(f"Numerical solver: {self.NMFsolverDropdown.currentText()}\n")
-                    if self.NMFsolverDropdown.currentText()=='mu': outfile.write(f"Beta divergence to minimize: {self.NMFbeta_lossDropdown.currentText()}\n")
-                    outfile.write(f"Tolerance: {self.NMFtolSpinbox.value()}\n")
-                    outfile.write(f"Maximum number of iterations: {self.NMFmax_iterSpinbox.value()}\n")
-                    outfile.write(f"Regularization constant for features: {self.NMFalpha_WDSpinbox.value()}\n")
-                    outfile.write(f"Regularization constant for samples: {self.NMFalpha_HDSpinbox.value()}\n") # Should work even if alpha_Hsame=True
-                    outfile.write(f"Regularization mixing parameter (0=l2, 1=l1): {self.NMFl1_ratioDSpinbox.value()}\n")
-                    if lift_factor<0: outfile.write(f"Due to negative values, your dataset was lifted by {lift_factor} during analysis, before subsequent lowering\n")
-                    if self.NMFrescale_CheckBox: outfile.write(f"Scores were rescaled to sum to 1\n")
-                    if errors is not None: outfile.write(f"\nThe NMF reconstruction error for {self.numComponentsSlider.value()} components was: {errors[self.numComponentsSlider.value()+1]:.2f}\n")
+                    outfile.write(f"Initialization method: {self.NMF_init_dropdown.currentText()}\n")
+                    outfile.write(f"Numerical solver: {self.NMF_solver_dropdown.currentText()}\n")
+                    if self.NMF_solver_dropdown.currentText()=='mu':
+                        outfile.write(f"Beta divergence to minimize: {self.NMF_beta_loss_dropdown.currentText()}\n")
+                    outfile.write(f"Tolerance: {self.NMF_tol_spinbox.value()}\n")
+                    outfile.write(f"Maximum number of iterations: {self.NMF_max_iter_spinbox.value()}\n")
+                    outfile.write(f"Regularization constant for features: {self.NMF_alpha_W_spinbox.value()}\n")
+                    outfile.write(f"Regularization constant for samples: {self.NMF_alpha_H_spinbox.value()}\n") # Should work even if alpha_Hsame=True
+                    outfile.write(f"Regularization mixing parameter (0=l2, 1=l1): {self.NMF_l1_ratio_spinbox.value()}\n")
+                    if lift_factor<0:
+                        outfile.write(f"Due to negative values, your dataset was lifted by {lift_factor} during analysis, before subsequent lowering\n")
+                    if self.NMF_rescale_checkbox:
+                        outfile.write("Scores were rescaled to sum to 1\n")
+                    if errors is not None:
+                        outfile.write(f"\nThe NMF reconstruction error for {self.comp_num_slider.value()} components was: {errors[self.comp_num_slider.value()+1]:.2f}\n")
                 case "ICA":
-                    outfile.write(f"Algorithm: {self.ICAalgorithmDropdown.currentText()}\n")
-                    outfile.write(f"Whitening strategy: {self.ICAwhitenDropdown.currentText()}\n")
-                    outfile.write(f"Whitening solver: {self.ICAwhiten_solverDropdown.currentText()}\n")
-                    outfile.write(f"Functional G form function: {self.ICAfunDropdown.currentText()}\n")
-                    outfile.write(f"Maximum number of iterations: {self.ICAmax_iterSpinbox.value()}\n")
-                    outfile.write(f"Tolerance: {self.ICAtolSpinbox.value()}\n")
+                    outfile.write(f"Algorithm: {self.ICA_algorithm_dropdown.currentText()}\n")
+                    outfile.write(f"Whitening strategy: {self.ICA_whiten_dropdown.currentText()}\n")
+                    outfile.write(f"Whitening solver: {self.ICA_whiten_solver_dropdown.currentText()}\n")
+                    outfile.write(f"Functional G form function: {self.ICA_fun_dropdown.currentText()}\n")
+                    outfile.write(f"Maximum number of iterations: {self.ICA_max_iter_spinbox.value()}\n")
+                    outfile.write(f"Tolerance: {self.ICA_tol_spinbox.value()}\n")
                 case "SNMF":
-                    outfile.write(f"Minimum number of iterations: {self.SNMFmin_iterSpinbox.value()}\n")
-                    outfile.write(f"Maximum number of iterations: {self.SNMFmax_iterSpinbox.value()}\n")
-                    outfile.write(f"Tolerance: {self.SNMFtol_SciSpinbox.value()}\n")
-                    outfile.write(f"Stretching factor: {self.SNMFrho_SciSpinbox.value()}\n")
-                    outfile.write(f"Sparsity factor: {self.SNMFeta_DSpinbox.value()}\n")
-                    outfile.write(f"! Be aware that stretching uses division, not multiplication (component / stretch) !")
+                    outfile.write(f"Minimum number of iterations: {self.SNMF_min_iter_spinbox.value()}\n")
+                    outfile.write(f"Maximum number of iterations: {self.SNMF_max_iter_spinbox.value()}\n")
+                    outfile.write(f"Tolerance: {self.SNMF_tol_spinbox.value()}\n")
+                    outfile.write(f"Stretching factor: {self.SNMF_rho_spinbox.value()}\n")
+                    outfile.write(f"Sparsity factor: {self.SNMF_eta_spinbox.value()}\n")
+                    outfile.write("! Be aware that stretching uses division, not multiplication (component / stretch) !")
         print("Summary written")
-        return None
-
-    def write_components(self, angles, results_path, fitted):
-        os.mkdir(f"{results_path}/components")
-        for i, component in enumerate(fitted.components_):
-            with open(f"{results_path}/components/component_{i+1:02}.xy", "w") as outfile:
-                for j in range(len(angles[i])):
-                    outfile.write(f"{angles[i][j]}\t{component[j]}\n")
-        print("Components written")
-        return None
-
-    def write_compContribute(self, angles, results_path, fitted, transformed, stretch=None):
-        os.mkdir(f"{results_path}/component_contributions")
-
-        if stretch is not None:
-            for compNum, component in enumerate(fitted.components_):
-                os.mkdir(f"{results_path}/component_contributions/component_{compNum+1:02}")
-                for i in range(len(transformed)): # Number of scans
-                    with open(f"{results_path}/component_contributions/component_{compNum+1:02}/c{compNum+1:02}_contribution_scan_{i}.xy", "w") as outfile:
-                        for j in range(len(angles[compNum])): # Index in scan 
-                            outfile.write(f"{angles[i][j]/stretch[i][compNum]}\t{component[j]*transformed[i][compNum]}\n") # Component multiplied by its scoring at that scan number
-        else:
-            for compNum, component in enumerate(fitted.components_):
-                os.mkdir(f"{results_path}/component_contributions/component_{compNum+1:02}")
-                for i in range(len(transformed)): # Number of scans
-                    with open(f"{results_path}/component_contributions/component_{compNum+1:02}/c{compNum+1:02}_contribution_scan_{i}.xy", "w") as outfile:
-                        for j in range(len(angles[compNum])): # Index in scan 
-                            outfile.write(f"{angles[i][j]}\t{component[j]*transformed[i][compNum]}\n") # Component multiplied by its scoring at that scan number
-            
-        print(f"Component contributions written")
-        return None
-
-    def write_scores(self, results_path, transformed):
-        with open(f"{results_path}/scores.csv", "w") as outfile:
-            for i in range(self.numComponentsSlider.value()-1):
-                outfile.write(f"Component {i+1:02},")
-            outfile.write(f"Component {self.numComponentsSlider.value():02}\n")
-
-            for i in range(len(transformed)):
-                for j in range(len(transformed[0])-1):
-                    outfile.write(f"{transformed[i][j]},")
-                outfile.write(f"{transformed[i][len(transformed[0])-1]}\n")
-        print("Scores written")
-        return None
-
-    def write_reconstructions(self, angles, results_path, reconstructed):
-        os.mkdir(f"{results_path}/reconstructions")
-        for i in range(len(reconstructed)):
-            with open(f"{results_path}/reconstructions/recon_scan_{i+1:04}.xy", "w") as outfile:
-                for j in range(len(angles[i])):
-                    outfile.write(f"{angles[i][j]}\t{reconstructed[i][j]}\n")
-        print("Reconstructions written")
-        return None
-    
-    def write_differences(self, angles, intensities, results_path, reconstructed):
-        os.mkdir(f"{results_path}/differences")
-        for i in range(len(reconstructed)):
-            with open(f"{results_path}/differences/diff_scan_{i+1:04}.xy", "w") as outfile:
-                for j in range(len(angles[i])):
-                    outfile.write(f"{angles[i][j]}\t{intensities[i][j]-reconstructed[i][j]}\n")
-        print("Differences written")
-        return None
-
-    def write_stretch(self, results_path, stretch):
-        with open(f"{results_path}/stretch.csv", "w") as outfile:
-            for i in range(self.numComponentsSlider.value()-1):
-                outfile.write(f"Component {i+1:02},")
-            outfile.write(f"Component {self.numComponentsSlider.value():02}\n")
-
-            for i in range(len(stretch)):
-                for j in range(len(stretch[0])-1):
-                    outfile.write(f"{stretch[i][j]},")
-                outfile.write(f"{stretch[i][len(stretch[0])-1]}\n")
-        print("Stretch written")
-        return None
-
-        print(stretch.shape)
 
     def export_results(self, angles, intensities, fitted, transformed, reconstructed, fig=None, errors=None, lift_factor=None, stretch=None):
+        """
+        Handles exporting of results
+        """
         print("Exporting results")
-        if not os.path.exists(f"{self.indirLabel.text()}/BaSSET_results"):
-            os.mkdir(f"{self.indirLabel.text()}/BaSSET_results")
-            print(f"Results can be found in: {self.indirLabel.text()}/BaSSET_results")
+        if not os.path.exists(f"{self.indir_label.text()}/BaSSET_results"):
+            os.mkdir(f"{self.indir_label.text()}/BaSSET_results")
+            print(f"Results can be found in: {self.indir_label.text()}/BaSSET_results")
 
         export_time = datetime.now().strftime("%y%m%d-%H%M%S")
-        results_path = f"{self.indirLabel.text()}/BaSSET_results/{export_time}_{self.algorithmGroup.checkedButton().text()}_{self.numComponentsSlider.value()}"
+        results_path = f"{self.indir_label.text()}/BaSSET_results/{export_time}_{self.algorithm_group.checkedButton().text()}_{self.comp_num_slider.value()}"
         os.mkdir(results_path)
-        if fig!=None:
+        if fig is not None:
             fig.savefig(f"{results_path}/overview.jpg")
         self.write_summary(results_path, errors, lift_factor)
-        self.write_components(angles, results_path, fitted)
-        if self.export_compContribute_CheckBox.isChecked(): self.write_compContribute(angles, results_path, fitted, transformed, stretch)
-        self.write_scores(results_path, transformed)
-        if self.export_recons_CheckBox.isChecked(): self.write_reconstructions(angles, results_path, reconstructed)
-        if self.export_diffs_CheckBox.isChecked(): self.write_differences(angles, intensities, results_path, reconstructed)
-        if self.algorithmGroup.checkedButton().text()=="SNMF": self.write_stretch(results_path, stretch)
+        file_worker.write_components(angles, results_path, fitted)
+        file_worker.write_scores(results_path, transformed)
+        if self.export_recons_checkbox.isChecked():
+            file_worker.write_reconstructions(angles, results_path, reconstructed)
+        if self.export_diffs_checkbox.isChecked():
+            file_worker.write_differences(angles, intensities, results_path, reconstructed)
+        if self.export_comp_contribute_checkbox.isChecked():
+            file_worker.write_comp_contribute(angles, results_path, fitted, transformed, stretch)
+        if self.algorithm_group.checkedButton().text()=="SNMF":
+            file_worker.write_stretch(results_path, stretch)
         print("Exporting results completed\n")
         return None
 
 class AboutDialog(qtw.QDialog):
+    """
+    Class container for About window
+    """
+
     def __init__(self, parent=None):
         super().__init__()
         self.setWindowTitle("About BaSSET")
@@ -1567,6 +1598,9 @@ class AboutDialog(qtw.QDialog):
 
 
 def main():
+    """
+    Main GUI handler
+    """
     app = qtw.QApplication(sys.argv)
 
     window = MainWindow()
