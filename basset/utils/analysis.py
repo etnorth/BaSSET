@@ -4,6 +4,7 @@ Module containing algorithm calls for BaSSET's data analysis
 
 import numpy as np
 from sklearn.decomposition import PCA, NMF, FastICA
+from sklearn.decomposition._nmf import _initialize_nmf
 from diffpy.stretched_nmf.snmf_class import SNMFOptimizer, _reconstruct_matrix
 
 
@@ -17,7 +18,7 @@ def PCA_analysis(intensities, comp_num, *,
     """
     Calls on sklearn's PCA algorithm and performs a fit to the user's dataset
     """
-    n_components = min(10,np.shape(intensities)) # Uses 10 for reporting explained variances
+    n_components = min(10,*np.shape(intensities)) # Uses 10 for reporting explained variances
     pca = PCA(n_components=n_components,
               whiten=whiten,
               svd_solver=svd_solver,
@@ -41,7 +42,8 @@ def NMF_analysis(intensities, comp_num, *,
                  alpha_H,
                  l1_ratio,
                  calc_err,
-                 rescale):
+                 rescale,
+                 exp_win):
     """
     Calls on sklearn's NMF algorithm and performs a fit to the user's dataset
     Calculates error for 1-10 components, and if data contains negative values, lifts them
@@ -51,12 +53,13 @@ def NMF_analysis(intensities, comp_num, *,
         intensities -= lift_factor
         print("Negative value found in dataset. Lifting data above zero")
 
+    errors = None
     if calc_err:
-        n_components_list = np.arange(1, min(10,np.shape(intensities))+1, dtype=int)
+        n_components_list = np.arange(1, min(10,*np.shape(intensities))+1, dtype=int)
         errors = np.empty(len(n_components_list))
         for i, n_components in enumerate(n_components_list):
             print(f"Calculating NMF reconstruction error for {n_components} components")
-            nmf = NMF(n_components=n_components,
+            X = NMF(n_components=n_components,
                       init=init,
                       solver=solver,
                       beta_loss=beta_loss,
@@ -65,15 +68,26 @@ def NMF_analysis(intensities, comp_num, *,
                       alpha_W=alpha_W,
                       alpha_H=alpha_H,
                       l1_ratio=l1_ratio)
-            X_temp = nmf.fit(intensities)
+            X_temp = X.fit(intensities)
             errors[i] = X_temp.reconstruction_err_
             print(f"    NMF ({n_components}) reconstruction error: {X_temp.reconstruction_err_:10f}")
             if comp_num == n_components:
                 X = X_temp
-                transformed = nmf.transform(intensities)
-                reconstructed = nmf.inverse_transform(transformed)
-    else:
-        nmf = NMF(n_components=comp_num,
+                transformed = X.transform(intensities)
+                reconstructed = X.inverse_transform(transformed)
+    elif exp_win['enable']:
+        # Does not perform calc_err for 1-10 components
+
+        if exp_win['do_custom']:
+            if exp_win['win_custom'][-1] < len(intensities): # Makes sure it includes entire set
+                exp_win['win_custom'] = np.hstack([exp_win['win_custom'],(len(intensities)+1)])
+            win_ends = exp_win['win_custom']
+        else: # Creates num_win windows with uniform distribution
+            win_ends = np.linspace(1,
+                                   len(intensities),
+                                   exp_win['num_win']+1,dtype=int
+            )[1:] # Exclude start
+        X = NMF(n_components=comp_num, # 'first' iteration outside loop, warm-start inside loop
                   init=init,
                   solver=solver,
                   beta_loss=beta_loss,
@@ -82,10 +96,50 @@ def NMF_analysis(intensities, comp_num, *,
                   alpha_W=alpha_W,
                   alpha_H=alpha_H,
                   l1_ratio=l1_ratio)
-        errors = None
-        X = nmf.fit(intensities)
-        transformed = nmf.transform(intensities)
-        reconstructed = nmf.inverse_transform(transformed)
+        X = X.fit(intensities[:win_ends[0],:])
+        W = X.transform(intensities[:win_ends[0],:])
+        H = X.components_
+        print(f"    NMF ({comp_num}) [start to {win_ends[0]}] reconstruction error: {X.reconstruction_err_:10f}")
+        for i, win_end in enumerate(win_ends[1:]):
+            win_intensities = intensities[:win_end,:]
+
+            W_init, _ = _initialize_nmf( # Create new W-rows for larger window
+                win_intensities,
+                comp_num,
+                init=init
+            )
+            W_init = W_init[len(W):,:] # Get only new rows
+            W_init = np.vstack([W, W_init]) # Add news row to old W
+
+            X = NMF(n_components=comp_num, # initialize with 'custom' for W and H guesses
+                  init='custom',
+                  solver=solver,
+                  beta_loss=beta_loss,
+                  tol=tol,
+                  max_iter=max_iter,
+                  alpha_W=alpha_W,
+                  alpha_H=alpha_H,
+                  l1_ratio=l1_ratio)
+            X = X.fit(win_intensities, W=W_init, H=H)
+            W = X.transform(win_intensities)
+            H = X.components_
+            print(f"    NMF ({comp_num}) [start to {win_end}] reconstruction error: {X.reconstruction_err_:10f}")
+        transformed = W
+        reconstructed = X.inverse_transform(transformed)
+        print(f"    NMF ({comp_num}) reconstruction error: {X.reconstruction_err_:10f}")
+    else:
+        X = NMF(n_components=comp_num,
+                  init=init,
+                  solver=solver,
+                  beta_loss=beta_loss,
+                  tol=tol,
+                  max_iter=max_iter,
+                  alpha_W=alpha_W,
+                  alpha_H=alpha_H,
+                  l1_ratio=l1_ratio)
+        X = X.fit(intensities)
+        transformed = X.transform(intensities)
+        reconstructed = X.inverse_transform(transformed)
         print(f"    NMF ({comp_num}) reconstruction error: {X.reconstruction_err_:10f}")
 
     if lift_factor < 0: # Lower data below zero again
@@ -140,7 +194,7 @@ def SNMF_analysis(intensities, comp_num, *,
     intensities = intensities.T # SNMF: (n_features,n_samples), sklearn: (n_samples,n_features)
 
     if calc_err:
-        n_components_list = np.arange(1, min(10,np.shape(intensities))+1, dtype=int)
+        n_components_list = np.arange(1, min(10,*np.shape(intensities))+1, dtype=int)
         errors = np.empty(len(n_components_list))
         for i, n_components in enumerate(n_components_list):
             print(f"Calculating SNMF reconstruction error for {n_components} components")

@@ -1,5 +1,5 @@
 """
-A module with functions used in or across BaSSET 
+Module with functions used in or across BaSSET 
 """
 
 import numpy as np
