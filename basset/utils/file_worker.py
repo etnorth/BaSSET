@@ -40,6 +40,43 @@ def most_common_filetype(indir):
     print(f"Most common filetype in supplied directory is {filetype}")
     return filetype
 
+def get_dataset_details(indir: str):
+    """
+    Evaluates a subset of the chosen dataset in order to accurately set widget_limits
+
+    Parameters
+    ----------
+    indir: str
+       Dirpath pointing to a directory of two-column datasets
+
+    Returns
+    xmin: float
+        The smallest x-value in the imported data
+    xmax: float
+        The largest x-value in the imported data
+    num_scans: int
+        The number of scans in the dataset
+    """
+    print("Getting dataset details")
+    if not indir.endswith(os.path.sep):
+        indir += os.path.sep
+
+    filetype = most_common_filetype(indir)
+    filenames = natsorted(glob(f"{indir}*{filetype}"))
+
+    x,_ = import_data(filenames[0])
+
+    xmin = np.min(x)
+    xmax = np.max(x)
+    num_scans = len(filenames)
+    print(
+        f"Minimum angle: {xmin}\n"
+        f"Maximum angle: {xmax}\n"
+        f"Number of scans {num_scans}"
+    )
+
+    return xmin, xmax, num_scans
+
 def import_data(filename):
     """
     Takes in a file to find continous two-column datasets and return them
@@ -90,6 +127,7 @@ def import_dataset(indir):
     ndarray
         2D array of shape (samples, features) containing intensity for each given angle in dataset
     """
+    print("Importing dataset")
     if not indir.endswith(os.path.sep):
         indir += os.path.sep
 
@@ -107,6 +145,7 @@ def import_dataset(indir):
         x_data.append(x)
         y_data.append(y)
 
+    print("Dataset imported\n")
     return np.array(x_data), np.array(y_data)
 
 def import_scores(filename, comp_num):

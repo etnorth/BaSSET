@@ -11,7 +11,8 @@ def theta_to_q(angles, wavelength):
 
     Parameters
     ----------
-    angles: ndarray
+    angles: float or ndarray
+        Angle to be converted from 2theta to Q or
         2D array of shape (samples, features) with a dataset's angles
     wavelength: float
         Wavelength used for data collection, given in angstrom

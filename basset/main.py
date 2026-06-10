@@ -61,6 +61,11 @@ class MainWindow(qtw.QMainWindow):
 
         self.angles = None
         self.intensities = None
+        self.dataset_details = {
+            "xmin": None,
+            "xmax": None,
+            "scanmax": None
+        }
 
         self.configpath = os.path.dirname(os.path.realpath(__file__))
         self.configfile = f"{self.configpath}/config.dat"
@@ -249,7 +254,12 @@ class MainWindow(qtw.QMainWindow):
         self.exp_win_layout.addWidget(self.exp_win_label, 0,0,1,3)
 
         self.exp_win_enable_checkbox = qtw.QCheckBox("Enable")
+        self.exp_win_enable_checkbox.setToolTip(
+            "Set own windows or use uniform distribution\n"
+            "(incompatible with \"Calculate errors\")"
+        )
         self.exp_win_layout.addWidget(self.exp_win_enable_checkbox,1,0)
+
 
         self.exp_win_custom_checkbox = qtw.QCheckBox("Custom")
         self.exp_win_custom_checkbox.setDisabled(True)
@@ -263,15 +273,29 @@ class MainWindow(qtw.QMainWindow):
         self.exp_win_num_spinbox.setToolTip("Number of windows for uniform distribution")
         self.exp_win_layout.addWidget(self.exp_win_num_spinbox,1,2)
 
-        # IF CUSTOM
+        self.exp_win_comps_label = qtw.QLabel("Components")
+        self.exp_win_layout.addWidget(self.exp_win_comps_label,2,0)
+
+        self.exp_win_comps_line = qtw.QLineEdit()
+        self.exp_win_comps_line.setDisabled(True)
+        self.exp_win_comps_line.setToolTip(
+            "Enter how many components you'd like for each window\n"
+            "(leave empty for all components from the start)"
+        )
+        self.exp_win_layout.addWidget(self.exp_win_comps_line, 2,1,1,2)
+
+        self.exp_win_custom_label = qtw.QLabel("Windows")
+        self.exp_win_layout.addWidget(self.exp_win_custom_label,3,0)
+
         self.exp_win_custom_line = qtw.QLineEdit()
         self.exp_win_custom_line.setDisabled(True)
         self.exp_win_custom_line.setToolTip("Enter window borders separated by comma (,)")
-        self.exp_win_layout.addWidget(self.exp_win_custom_line,2,0,1,3)
+        self.exp_win_layout.addWidget(self.exp_win_custom_line,3,1,1,2)
 
         self.exp_win_enable_checkbox.toggled.connect(
             lambda value: (
                 self.exp_win_custom_checkbox.setEnabled(value),
+                self.exp_win_comps_line.setEnabled(True),
                 self.exp_win_custom_checkbox.toggled.emit(self.exp_win_custom_checkbox.isChecked())
             )
         )
@@ -1078,13 +1102,10 @@ class MainWindow(qtw.QMainWindow):
         for widget in self.reconstruct_widgets[self.comp_num_slider.value():]:
             widget.hide()
 
-    def set_indir(self, *, indir=None):
+    def set_indir(self, indir=None):
         """
-        Sets the dataset directory, tests its validity and imports data
-        Ideally full dataset import should be upon plot / run click
-        Angle range, scan_num etc. should be fetched before
+        Sets the dataset directory and gets details for widget behavior
         """
-        print("Importing dataset")
         if not indir: # None from function def, False from "Load directory" widget
             if self.indir_label.text() == "Select the folder containing your data files":
                 indir = str(qtw.QFileDialog.getExistingDirectory(self))
@@ -1096,9 +1117,8 @@ class MainWindow(qtw.QMainWindow):
             if indir == "": # If the operation was cancelled
                 return
 
-        # Confirm dataset can be imported by the program
         try:
-            self.angles, self.intensities = file_worker.import_dataset(indir)
+            self.set_widget_limits(indir)
         except (FileNotFoundError, ValueError, IOError) as e:
             qtw.QMessageBox.critical(
                 self,
@@ -1107,35 +1127,14 @@ class MainWindow(qtw.QMainWindow):
                 f"Details:\n{type(e).__name__}: {e}\n\n"
                 "Ensure directory and files exist and are in the correct format."
             )
-        else:
-            self.set_widget_limits(new=True)
-            self.indir_label.setText(indir)
-            self.add_recentdir(indir)
-            print("Dataset imported\n")
+            return
 
-    def add_recentdir(self, recentdir):
-        """
-        Adds the relevant directory path to the list of recent dirs
-        """
-        recentdir_button = qtg.QAction(recentdir, self)
-        recentdir_button.triggered.connect(lambda: self.set_indir(indir=recentdir_button.text()))
-
-        if recentdir in (
-            action.text() for action in self.file_submenu_recent_dirs.actions()
-        ): # Removes duplicate occurence
-            self.file_submenu_recent_dirs.removeAction(
-                next(
-                    action
-                    for action in self.file_submenu_recent_dirs.actions()
-                    if action.text()==recentdir
-                )
-            )
-        elif len(self.file_submenu_recent_dirs.actions()) >= 10+2: # Deletes oldest recent if >10
-            # -1 is "clear", -2 is separator, so -3 should be oldest "recent"
-            self.file_submenu_recent_dirs.removeAction(self.file_submenu_recent_dirs.actions()[-3])
-        self.file_submenu_recent_dirs.insertAction(
-            self.file_submenu_recent_dirs.actions()[0],
-            recentdir_button
+        self.indir_label.setText(indir)
+        gui_helper.add_recent(
+            indir,
+            self.file_submenu_recent_dirs,
+            action_func=self.set_indir,
+            update_func=self.update_config_file
         )
 
     def set_bkgfile(self, infile=None):
@@ -1170,65 +1169,53 @@ class MainWindow(qtw.QMainWindow):
             )
         else:
             self.bkg_label.setText(infile)
-            self.add_recentbkg(infile)
+            gui_helper.add_recent(
+                infile,
+                self.file_submenu_recent_bkgs,
+                action_func=self.set_bkgfile,
+                update_func=self.update_config_file
+            )
             print("Background imported\n")
 
-    def add_recentbkg(self, recentbkg):
-        """
-        Adds the relevant background filepath to the list of recent bkgs
-        """
-        recentbkg_button = qtg.QAction(recentbkg, self)
-        recentbkg_button.triggered.connect(lambda: self.set_bkgfile(recentbkg_button.text()))
-
-        if recentbkg in (
-            action.text()
-            for action in self.file_submenu_recent_bkgs.actions()
-        ): # Removes duplicate occurence
-            self.file_submenu_recent_bkgs.removeAction(next(
-                action
-                for action in self.file_submenu_recent_bkgs.actions()
-                if action.text()==recentbkg
-            ))
-        elif len(self.file_submenu_recent_bkgs.actions()) >= 10+2:
-            # Deletes oldest recent if there are more than 10
-            # -1 is "clear", -2 is separator, so -3 should be oldest "recent"
-            self.file_submenu_recent_bkgs.removeAction(self.file_submenu_recent_bkgs.actions()[-3])
-        self.file_submenu_recent_bkgs.insertAction(
-            self.file_submenu_recent_bkgs.actions()[0],
-            recentbkg_button
-        )
-
-    def set_widget_limits(self, new=False):
+    def set_widget_limits(self, indir=None):
         """
         Sets widget limits based on imported data
         """
+        if isinstance(indir,str): # If a non-empty string (Workaround for PyQt signal connections)
+            xmin, xmax, scanmax = file_worker.get_dataset_details(indir)
+
+            self.dataset_details["xmin"] = xmin
+            self.dataset_details["xmax"] = xmax
+            self.dataset_details["scanmax"] = scanmax
+
         if self.convert_to_q_checkbox.isChecked():
-            xmin = funcs.theta_to_q(np.min(self.angles),self.wavelength_widget.value())
-            xmax = funcs.theta_to_q(np.max(self.angles),self.wavelength_widget.value())
+            xmin = funcs.theta_to_q(self.dataset_details["xmin"],self.wavelength_widget.value())
+            xmax = funcs.theta_to_q(self.dataset_details["xmax"],self.wavelength_widget.value())
         else:
-            xmin = np.min(self.angles)
-            xmax = np.max(self.angles)
+            xmin = self.dataset_details["xmin"]
+            xmax = self.dataset_details["xmax"]
+        scanmax = self.dataset_details["scanmax"]
 
         self.xmin_spinbox.setMinimum(xmin)
         self.xmin_spinbox.setMaximum(xmax)
         self.xmax_spinbox.setMinimum(xmin)
         self.xmax_spinbox.setMaximum(xmax)
 
-        self.scanmin_spinbox.setMaximum(len(self.angles))
-        self.scanmax_spinbox.setMaximum(len(self.angles))
+        self.scanmin_spinbox.setMaximum(scanmax)
+        self.scanmax_spinbox.setMaximum(scanmax)
         for widget in self.reconstruct_widgets:
-            widget.setMaximum(len(self.angles))
+            widget.setMaximum(scanmax)
 
-        if new:
-            self.xmin_spinbox.setValue(self.xmin_spinbox.minimum())
-            self.xmax_spinbox.setValue(self.xmax_spinbox.maximum())
-            self.scanmax_spinbox.setValue(self.scanmax_spinbox.maximum())
+        if isinstance(indir,str):
+            self.xmin_spinbox.setValue(xmin)
+            self.xmax_spinbox.setValue(xmax)
+            self.scanmin_spinbox.setValue(1)
+            self.scanmax_spinbox.setValue(scanmax)
 
     def read_config_file(self): # pylint: disable=too-many-branches,too-many-statements
         """
         Reads BaSSET config file to set widget values
         """
-        print("Reading config file")
         with open(self.configfile, 'r', encoding='utf-8') as infile:
             lines = infile.readlines()
             for line in lines:
@@ -1239,21 +1226,31 @@ class MainWindow(qtw.QMainWindow):
                         case "Current file directory":
                             if os.path.exists(value):
                                 self.indir_label.setText(value)
-                                self.set_indir(indir=value)
+                                self.set_indir(value)
                             elif value!="Select the folder containing your data files":
                                 print(f"{value} is not a valid directory")
                         case "Recent directories":
                             for indir in reversed(value.split(", ")):
                                 if indir != "":
-                                    self.add_recentdir(indir)
+                                    gui_helper.add_recent(
+                                        indir,
+                                        self.file_submenu_recent_dirs,
+                                        action_func=self.set_indir,
+                                        update_func=self.update_config_file
+                                    )
                         case "Background file":
                             self.bkg_label.setText(value)
                         case "Background scale":
                             self.bkg_scale_spinbox.setValue(float(value))
                         case "Recent backgrounds":
-                            for bkg in reversed(value.split(", ")):
-                                if bkg != "":
-                                    self.add_recentbkg(bkg)
+                            for infile in reversed(value.split(", ")):
+                                if infile != "":
+                                    gui_helper.add_recent(
+                                        infile,
+                                        self.file_submenu_recent_bkgs,
+                                        action_func=self.set_bkgfile,
+                                        update_func=self.update_config_file
+                                    )
                         case "Input format":
                             for button in self.input_format_group.buttons():
                                 if value == button.text():
@@ -1371,12 +1368,18 @@ class MainWindow(qtw.QMainWindow):
         """
         print("Plotting input dataset\n")
 
-        try:
-            if self.angles is None or self.intensities is None:
+        if self.angles is None or self.intensities is None:
+            try:
                 self.angles, self.intensities = file_worker.import_dataset(self.indir_label.text())
-        except ValueError: # If init as array with more than one elements, truth value is ambiguous
-            if self.angles.all() is None or self.intensities.all() is None:
-                self.angles, self.intensities = file_worker.import_dataset(self.indir_label.text())
+            except (FileNotFoundError, ValueError, IOError) as e:
+                qtw.QMessageBox.critical(
+                    self,
+                    "Dataset",
+                    "Could not import dataset.\n\n"
+                    f"Details:\n{type(e).__name__}: {e}\n\n"
+                    "Ensure directory and files exist and are in the correct format."
+                )
+                return
 
         angles = self.angles.copy()
         intensities = self.intensities.copy()
@@ -1411,18 +1414,18 @@ class MainWindow(qtw.QMainWindow):
                 )
                 return
 
-        fig = plt.figure()
-        cmap = plt.get_cmap('inferno')
-        colors = cmap(np.linspace(0.8, 0, len(intensities)))
-        stagger_factor = np.max(intensities) / (15*len(intensities))
-        stagger_max = 0
-
         if self.limit_scans_checkbox.isChecked():
             loopmin = self.scanmin_spinbox.value()-2
             loopmax = self.scanmax_spinbox.value()-1
         else:
             loopmin = -1
             loopmax = len(intensities)-1
+
+        fig = plt.figure()
+        cmap = plt.get_cmap('inferno')
+        colors = cmap(np.linspace(0.8, 0, len(intensities)))
+        stagger_factor = np.max(intensities) / (15*len(intensities))
+        stagger_max = 0
 
         for i in range(loopmax, loopmin, -1): # Plots in reverse so last scan is behind
             yaxis = intensities[i]+i*stagger_factor
@@ -1468,12 +1471,18 @@ class MainWindow(qtw.QMainWindow):
         print("Beginning analysis...")
         comp_num = self.comp_num_slider.value()
 
-        try:
-            if self.angles is None or self.intensities is None:
+        if self.angles is None or self.intensities is None:
+            try:
                 self.angles, self.intensities = file_worker.import_dataset(self.indir_label.text())
-        except ValueError: # If init as array with more than one elements, truth value is ambiguous
-            if self.angles.all() is None or self.intensities.all() is None:
-                self.angles, self.intensities = file_worker.import_dataset(self.indir_label.text())
+            except (FileNotFoundError, ValueError, IOError) as e:
+                qtw.QMessageBox.critical(
+                    self,
+                    "Dataset",
+                    "Could not import dataset.\n\n"
+                    f"Details:\n{type(e).__name__}: {e}\n\n"
+                    "Ensure directory and files exist and are in the correct format."
+                )
+                return
 
         angles = self.angles.copy()
         intensities = self.intensities.copy()
@@ -1563,9 +1572,15 @@ class MainWindow(qtw.QMainWindow):
                         'enable': self.exp_win_enable_checkbox.isChecked(),
                         'do_custom': self.exp_win_custom_checkbox.isChecked(),
                         'num_win': self.exp_win_num_spinbox.value(),
-                        'win_custom': np.fromstring(self.exp_win_custom_line.text(),
-                                                    dtype=int,
-                                                    sep=','
+                        'comps': np.fromstring(
+                            self.exp_win_comps_line.text(),
+                            dtype=int,
+                            sep=','
+                        ),
+                        'win_custom': np.fromstring(
+                            self.exp_win_custom_line.text(),
+                            dtype=int,
+                            sep=','
                         )
                     }
                 )
@@ -1705,7 +1720,26 @@ class MainWindow(qtw.QMainWindow):
                 ax_comp.sharex(ax_comp_master)
 
         for i, recon in enumerate(recon_num):
-            ax_scores.axvline(recon+1, color="k", linestyle=":", label="Recons" if i==0 else '')
+            ax_scores.axvline(recon+1, color="k", linestyle=":", label=("Recons" if i==0 else ''))
+
+        # Plot windows if expanding windows are used
+        if self.exp_win_enable_checkbox.isChecked():
+            if self.exp_win_custom_checkbox.isChecked():
+                win_ends = np.fromstring(
+                    self.exp_win_custom_line.text(),
+                    dtype=int,
+                    sep=','
+                )
+            else:
+                win_ends = np.linspace(
+                    1,
+                    len(intensities),
+                    self.exp_win_num_spinbox.value()+1,
+                    dtype=int
+                )[1:] # Exclude start
+            for i, win_end in enumerate(win_ends):
+                ax_scores.axvline(win_end, color="k", label=("Windows" if i==0 else ''))
+
         ax_scores.ticklabel_format(axis="y", style="sci", scilimits=[0,0])
         ax_scores.legend()
         l, h = ax_recon.get_legend_handles_labels()

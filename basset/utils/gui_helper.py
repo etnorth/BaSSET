@@ -96,3 +96,37 @@ class SciSpinBox(qtw.QDoubleSpinBox):
             self.setValue(self.value() * self.multiplier)
         else:
             self.setValue(self.value() / self.multiplier)
+
+
+def add_recent(pathname: str, action_menu: qtw.QMenu, *, action_func, update_func, list_max=10):
+    """
+    Adds a new action to a menu of recent actions,
+    removes duplicates, and cleans menu if too long 
+
+    Parameters
+    ----------
+    pathname: str
+        Name of action to be added to action_menu
+    action_menu: QMenu
+        QMenu containing a QAction of recents,
+        where last two elements are to be kept (separator and "Clear" button)
+    action_func: function with str parameter and no return value
+        Function for the new action to perform
+    update_func (function with no parameter or return values)
+    list_max: int
+        Max number of elements action_menu can contain
+    """
+    new_action = qtg.QAction(pathname, action_menu)
+    new_action.triggered.connect(lambda: action_func(pathname))
+    new_action.triggered.connect(update_func)
+
+    # Remove duplicate occurences
+    for action in action_menu.actions():
+        if action.text() == pathname:
+            action_menu.removeAction(action)
+
+    # Delete oldest recent if menu contains more actions than allowed by list_max
+    if len(action_menu.actions()) >= list_max + 2: # + 2 accounts for separator and clear button
+        action_menu.removeAction(action_menu.actions()[-3])
+
+    action_menu.insertAction(action_menu.actions()[0], new_action) # Insert new at top

@@ -79,17 +79,25 @@ def NMF_analysis(intensities, comp_num, *,
                 reconstructed = X.inverse_transform(transformed)
     elif exp_win['enable']:
         # Does not perform calc_err for 1-10 components
-
         if exp_win['do_custom']:
             if exp_win['win_custom'][-1] < len(intensities): # Makes sure it includes entire set
                 exp_win['win_custom'] = np.hstack([exp_win['win_custom'],(len(intensities)+1)])
             win_ends = exp_win['win_custom']
         else: # Creates num_win windows with uniform distribution
-            win_ends = np.linspace(1,
-                                   len(intensities),
-                                   exp_win['num_win']+1,dtype=int
+            win_ends = np.linspace(
+                1,
+                len(intensities),
+                exp_win['num_win']+1,
+                dtype=int
             )[1:] # Exclude start
-        X = NMF(n_components=comp_num, # 'first' iteration outside loop, warm-start inside loop
+        if exp_win['comps'].size == 0: # If empty, use all from start
+            win_comps = np.full(len(win_ends),comp_num)
+        else:
+            win_comps = exp_win['comps']
+
+        print(f"DEBUG: win_comps:{list(win_comps)},win_ends:{list(win_ends)}")
+
+        X = NMF(n_components=win_comps[0], # 'first' iteration outside loop, warm-start inside loop
                   init=init,
                   solver=solver,
                   beta_loss=beta_loss,
@@ -101,19 +109,33 @@ def NMF_analysis(intensities, comp_num, *,
         X = X.fit(intensities[:win_ends[0],:])
         W = X.transform(intensities[:win_ends[0],:])
         H = X.components_
-        print(f"    NMF ({comp_num}) [start to {win_ends[0]}] reconstruction error: {X.reconstruction_err_:10f}")
-        for i, win_end in enumerate(win_ends[1:]):
+        print(
+            f"    NMF ({win_comps[0]}) [start to {win_ends[0]}] reconstruction error: "
+            f"{X.reconstruction_err_:10f}"
+        )
+
+        for i, (win_end, win_comp) in enumerate(zip(win_ends[1:], win_comps[1:])):
             win_intensities = intensities[:win_end,:]
 
-            W_init, _ = _initialize_nmf( # Create new W-rows for larger window
+            W_init, H_init = _initialize_nmf( # Create new W-rows for larger window
                 win_intensities,
-                comp_num,
+                win_comp,
                 init=init
             )
-            W_init = W_init[len(W):,:] # Get only new rows
-            W_init = np.vstack([W, W_init]) # Add news row to old W
+            W_rows, W_cols = W.shape
 
-            X = NMF(n_components=comp_num, # initialize with 'custom' for W and H guesses
+            W_vcrop = W_init[W_rows:,:W_cols] # Get only new rows, for vstack
+            W_hcrop = W_init[:,W_cols:] # Get only new columns, for hstack
+            print(f"DEBUG:\nW:{W.shape}\nW_vcrop:{W_vcrop.shape}")
+            W = np.vstack([W, W_vcrop]) # Add news row to old W
+            print(f"DEBUG:\nW:{W.shape}\nW_hcrop:{W_hcrop.shape}")
+            W = np.hstack([W, W_hcrop]) # Add news columns to old W
+            print(f"DEBUG:\nW:{W.shape}")
+            H_vcrop = H_init[len(H):,:]
+            print(f"DEBUG:\nH:{H.shape}\nH_vcrop:{H_vcrop.shape}")
+            H = np.vstack([H, H_vcrop]) # Add news row to old W
+
+            X = NMF(n_components=win_comp, # initialize with 'custom' for W and H guesses
                   init='custom',
                   solver=solver,
                   beta_loss=beta_loss,
@@ -122,13 +144,18 @@ def NMF_analysis(intensities, comp_num, *,
                   alpha_W=alpha_W,
                   alpha_H=alpha_H,
                   l1_ratio=l1_ratio)
-            X = X.fit(win_intensities, W=W_init, H=H)
+            X = X.fit(win_intensities, W=W, H=H)
             W = X.transform(win_intensities)
             H = X.components_
-            print(f"    NMF ({comp_num}) [start to {win_end}] reconstruction error: {X.reconstruction_err_:10f}")
+            print(
+                f"    NMF ({win_comp}) [start to {win_end}] reconstruction error: "
+                f"{X.reconstruction_err_:10f}"
+            )
+
         transformed = W
         reconstructed = X.inverse_transform(transformed)
-        print(f"    NMF ({comp_num}) reconstruction error: {X.reconstruction_err_:10f}")
+        print(f"    NMF ({win_comps[-1]}) reconstruction error: {X.reconstruction_err_:10f}")
+
     else:
         X = NMF(n_components=comp_num,
                   init=init,
