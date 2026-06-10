@@ -10,6 +10,36 @@ from natsort import natsorted
 import numpy as np
 
 
+def most_common_filetype(indir):
+    """
+    Finds the most common filetype in a given directory
+
+    Parameters
+    ----------
+    indir: str
+        Dirpath pointing to a directory of files
+
+    Returns
+    -------
+    filetype: str
+        Most common filetype in directory
+    """
+    filetypes = {}
+    for file_extension in [os.path.splitext(filename)[-1] for filename in glob(f"{indir}*")]:
+        # Gets extension of each filename in folder
+        if file_extension in filetypes:
+            filetypes[file_extension] += 1
+        else:
+            filetypes[file_extension] = 1
+    filetype = max(filetypes)
+    # Checks if there are multiple equally popular file extensions
+    popular_filetypes = [key for key, value in filetypes.items() if value == filetypes[filetype]]
+    if len(popular_filetypes)>1:
+        raise NotImplementedError("Multiple equally popular filetypes found:" \
+                                  f"({popular_filetypes}). Check dir and e-run")
+    print(f"Most common filetype in supplied directory is {filetype}")
+    return filetype
+
 def import_data(filename):
     """
     Takes in a file to find continous two-column datasets and return them
@@ -34,11 +64,11 @@ def import_data(filename):
         pass
     with open(filename, 'r', encoding='utf-8') as infile:
         lines = infile.readlines()
-        for i, line in enumerate(lines):
+        for i, line in enumerate(lines): # Find first non-empty line beginning with a number
             if not line:
                 continue
             if search("[0-9]", line.replace(' ','')[0]):
-                # Checks if first non-whitespace symbol is number and skips them
+                # Checks if first non-whitespace symbol is a number and skips row if not
                 x, y = np.loadtxt(filename, unpack=True, skiprows=i, usecols=(0,1))
                 return x, y
 
@@ -46,12 +76,12 @@ def import_data(filename):
 
 def import_dataset(indir):
     """
-    Imports data from all files in chosen directory of chosen / most popular filetype
+    Imports data from all files in chosen directory of given filetype
     
     Parameters
     ----------
     indir: str
-        The dirpath pointing to a directory of two-column datasets
+       Dirpath pointing to a directory of two-column datasets
     
     Returns
     -------
@@ -63,21 +93,7 @@ def import_dataset(indir):
     if not indir.endswith(os.path.sep):
         indir += os.path.sep
 
-    filetypes = {}
-    for file_extension in [os.path.splitext(filename)[-1] for filename in glob(f"{indir}*")]:
-        # Gets extension of each filename in folder
-        if file_extension in filetypes:
-            filetypes[file_extension] += 1
-        else:
-            filetypes[file_extension] = 1
-    filetype = max(filetypes)
-    # Checks if there are multiple equally popular file extensions
-    popular_filetypes = [key for key, value in filetypes.items() if value == filetypes[filetype]]
-    if len(popular_filetypes)>1:
-        print(f"Multiple equally popular filetypes found: ({popular_filetypes})." \
-              "Disable 'auto' and re-run")
-        raise NotImplementedError
-    print(f"Most common filetype in supplied directory is {filetype}")
+    filetype = most_common_filetype(indir)
 
     print(f"Looking for files in \"...{indir[-41:-1]}\" of type {filetype}")
     filenames = natsorted(glob(f"{indir}*{filetype}"))
@@ -172,7 +188,7 @@ def write_reconstructions(angles, results_path, reconstructed):
     results_path: str
         Directory path to where results shall be saved
     reconstructed: ndarray
-        2D array of shape (samples, features) containing analysis reconstructed intensities in dataset
+        2D array of shape (samples, features) containing reconstructed intensities from dataset
     """
     os.mkdir(f"{results_path}/reconstructions")
     for i in range(len(reconstructed)):
@@ -196,7 +212,7 @@ def write_differences(angles, intensities, results_path, reconstructed):
     results_path: str
         Directory path to where results shall be saved
     reconstructed: ndarray
-        2D array of shape (samples, features) containing analysis reconstructed intensities in dataset
+        2D array of shape (samples, features) containing reconstructed intensities from dataset
     """
     os.mkdir(f"{results_path}/differences")
     for i in range(len(reconstructed)):
@@ -244,7 +260,7 @@ def write_comp_contribute(angles, results_path, fitted, transformed, stretch=Non
                           'w',
                           encoding='utf-8') as outfile:
                     for j in range(len(angles[comp_num])): # Index in scan
-                        outfile.write(f"{angles[i][j]}\t{component[j]*transformed[i][comp_num]}\n") # Component multiplied by its scoring at that scan number
+                        outfile.write(f"{angles[i][j]}\t{component[j]*transformed[i][comp_num]}\n")# Component multiplied by its scoring at that scan number
     print("Component contributions written")
 
 def write_stretch(results_path, stretch):

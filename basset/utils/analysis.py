@@ -14,7 +14,8 @@ def PCA_analysis(intensities, comp_num, *,
                  tol,
                  iterated_power,
                  n_oversamples,
-                 power_iteration_normalizer):
+                 power_iteration_normalizer
+):
     """
     Calls on sklearn's PCA algorithm and performs a fit to the user's dataset
     """
@@ -43,7 +44,8 @@ def NMF_analysis(intensities, comp_num, *,
                  l1_ratio,
                  calc_err,
                  rescale,
-                 exp_win):
+                 exp_win
+):
     """
     Calls on sklearn's NMF algorithm and performs a fit to the user's dataset
     Calculates error for 1-10 components, and if data contains negative values, lifts them
@@ -161,7 +163,8 @@ def ICA_analysis(intensities, comp_num, *,
                  max_iter,
                  tol,
                  whiten_solver,
-                 calc_err):
+                 calc_err
+):
     """
     Calls on sklearn's ICA algorithm and performs a fit to the user's dataset
     """
@@ -187,7 +190,11 @@ def SNMF_analysis(intensities, comp_num, *,
                   tol,
                   rho,
                   eta,
-                  calc_err):
+                  calc_err
+):
+    """
+    Calls on diffpy's stretched-nmf and performs a fit to the user's dataset
+    """
     # SNMF automatically handles lifts negative values, so no if-case needed
     print("SNMF reconstruction error calculation is disabled due to slow convergence")
 

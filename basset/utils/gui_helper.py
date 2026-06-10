@@ -1,6 +1,7 @@
 """
 Module with custom widgets used in BaSSET
 """
+# pylint: disable=invalid-name,too-few-public-methods
 
 import numpy as np
 import PyQt6.QtCore as qtc
