@@ -6,11 +6,11 @@ import sys
 import os
 from datetime import datetime
 
-from basset.utils import gui_helper
-from utils import (
+from basset.utils import (
     analysis,
     file_worker,
-    funcs
+    funcs,
+    gui_helper
 )
 
 import numpy as np
