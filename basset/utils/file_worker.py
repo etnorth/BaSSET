@@ -57,7 +57,7 @@ def get_dataset_details(indir: str):
     num_scans: int
         The number of scans in the dataset
     """
-    print("Getting dataset details")
+    print("Getting dataset details from {indir}")
     if not indir.endswith(os.path.sep):
         indir += os.path.sep
 

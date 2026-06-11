@@ -6,6 +6,12 @@ import sys
 import os
 from datetime import datetime
 
+import numpy as np
+import matplotlib.pyplot as plt
+import PyQt6.QtCore as qtc
+import PyQt6.QtWidgets as qtw
+import PyQt6.QtGui as qtg
+
 from basset.utils import (
     analysis,
     file_worker,
@@ -13,14 +19,8 @@ from basset.utils import (
     gui_helper
 )
 
-import numpy as np
-import matplotlib.pyplot as plt
-import PyQt6.QtCore as qtc
-import PyQt6.QtWidgets as qtw
-import PyQt6.QtGui as qtg
 
-
-import platform
+import platform # pylint: disable=wrong-import-order
 if platform.system() == "Windows":
     # Separates BaSSET from the "Pythonw.exe" ID so it can have its own tackbar icon
     import ctypes
@@ -185,7 +185,7 @@ class MainWindow(qtw.QMainWindow):
         self.limit_dataset_layout = qtw.QGridLayout()
         self.grid.addLayout(self.limit_dataset_layout, 2,0)
 
-        self.limit_dataset_label = qtw.QLabel("Limit dataset")
+        self.limit_dataset_label = qtw.QLabel("Limit Dataset")
         self.limit_dataset_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
         self.limit_dataset_label.setSizePolicy(
             qtw.QSizePolicy.Policy.Minimum,
@@ -245,7 +245,7 @@ class MainWindow(qtw.QMainWindow):
         self.exp_win_layout = qtw.QGridLayout()
         self.grid.addLayout(self.exp_win_layout, 4,0)
 
-        self.exp_win_label = qtw.QLabel("Expanding window fitting")
+        self.exp_win_label = qtw.QLabel("Expanding Window Fitting")
         self.exp_win_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
         self.exp_win_label.setSizePolicy(
             qtw.QSizePolicy.Policy.Minimum,
@@ -1107,7 +1107,7 @@ class MainWindow(qtw.QMainWindow):
         Sets the dataset directory and gets details for widget behavior
         """
         if not indir: # None from function def, False from "Load directory" widget
-            if self.indir_label.text() == "Select the folder containing your data files":
+            if self.indir_label.text() == "Select the folder containing your dataset":
                 indir = str(qtw.QFileDialog.getExistingDirectory(self))
             else:
                 indir = str(qtw.QFileDialog.getExistingDirectory(
@@ -1227,7 +1227,7 @@ class MainWindow(qtw.QMainWindow):
                             if os.path.exists(value):
                                 self.indir_label.setText(value)
                                 self.set_indir(value)
-                            elif value!="Select the folder containing your data files":
+                            else:
                                 print(f"{value} is not a valid directory")
                         case "Recent directories":
                             for indir in reversed(value.split(", ")):
@@ -1324,7 +1324,7 @@ class MainWindow(qtw.QMainWindow):
         with open(self.configfile, "w", encoding='utf-8') as outfile:
             outfile.write(f"Current file directory: {
                 self.indir_label.text()
-                if self.indir_label.text()!='Select the folder containing your data files'
+                if self.indir_label.text()!="Select the folder containing your dataset"
                 else ''
             }\n")
             outfile.write(f"Recent directories: {', '.join(
@@ -1520,8 +1520,8 @@ class MainWindow(qtw.QMainWindow):
             angles = angles[:,xmin_index:xmax_index]
             intensities = intensities[:,xmin_index:xmax_index]
         if self.limit_scans_checkbox.isChecked(): # Crop scans
-            scanmin = self.scanmin_spinbox.value()-1
-            scanmax = self.scanmax_spinbox.value()-1
+            scanmin = self.scanmin_spinbox.value()
+            scanmax = self.scanmax_spinbox.value()
             angles = angles[scanmin:scanmax,:]
             intensities = intensities[scanmin:scanmax,:]
 
@@ -1699,7 +1699,7 @@ class MainWindow(qtw.QMainWindow):
             ax_recon.set_xlabel(xlabel)
             ax_recon.sharex(ax_comp)
             ax_recon.set_ylim(
-                0.05*(np.min(difference)-distance)*1.05 - max(
+                1.05*(np.min(difference)-distance) - 0.05*max(
                     np.max(intensities[recon_num[i]]),
                     np.max(reconstructed[recon_num[i]])
                 ),
@@ -1783,8 +1783,15 @@ class MainWindow(qtw.QMainWindow):
         ax_errors.set_xlabel("# of Components")
 
         fig.canvas.manager.set_window_title(
-            f"{self.algorithm_group.checkedButton().text()} ({comp_num}): "
-            f"x:({self.xmin_spinbox.value()},{self.xmax_spinbox.value()})"
+            f"{self.algorithm_group.checkedButton().text()} ({comp_num}), "
+            f"{self.input_format_group.checkedButton().text()}: ({
+                "full" if not self.limit_xaxis_checkbox.isChecked()
+                else (self.xmin_spinbox.value(),self.xmax_spinbox.value())
+            }), "
+            f"scans: ({
+                "full" if not self.limit_scans_checkbox.isChecked()
+                else (self.scanmin_spinbox.value(),self.scanmax_spinbox.value())
+            })"
         )
 
         # Maximize window

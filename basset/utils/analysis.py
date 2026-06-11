@@ -1,6 +1,7 @@
 """
 Module containing algorithm calls for BaSSET's data analysis
 """
+# pylint: disable=invalid-name
 
 import numpy as np
 from sklearn.decomposition import PCA, NMF, FastICA
@@ -20,16 +21,16 @@ def PCA_analysis(intensities, comp_num, *,
     Calls on sklearn's PCA algorithm and performs a fit to the user's dataset
     """
     n_components = min(10,*np.shape(intensities)) # Uses 10 for reporting explained variances
-    pca = PCA(n_components=n_components,
+    pca_model = PCA(n_components=n_components,
               whiten=whiten,
               svd_solver=svd_solver,
               tol=tol,
               iterated_power=iterated_power,
               n_oversamples=n_oversamples,
               power_iteration_normalizer=power_iteration_normalizer)
-    X = pca.fit(intensities)
-    transformed = pca.transform(intensities)
-    reconstructed = pca.inverse_transform(transformed)
+    X = pca_model.fit(intensities)
+    transformed = pca_model.transform(intensities)
+    reconstructed = pca_model.inverse_transform(transformed)
 
     return X, transformed, reconstructed
 
@@ -61,7 +62,7 @@ def NMF_analysis(intensities, comp_num, *,
         errors = np.empty(len(n_components_list))
         for i, n_components in enumerate(n_components_list):
             print(f"Calculating NMF reconstruction error for {n_components} components")
-            X = NMF(n_components=n_components,
+            nmf_model = NMF(n_components=n_components,
                       init=init,
                       solver=solver,
                       beta_loss=beta_loss,
@@ -70,13 +71,16 @@ def NMF_analysis(intensities, comp_num, *,
                       alpha_W=alpha_W,
                       alpha_H=alpha_H,
                       l1_ratio=l1_ratio)
-            X_temp = X.fit(intensities)
-            errors[i] = X_temp.reconstruction_err_
-            print(f"    NMF ({n_components}) reconstruction error: {X_temp.reconstruction_err_:10f}")
+            nmf_model_temp = nmf_model.fit(intensities)
+            errors[i] = nmf_model_temp.reconstruction_err_
+            print(
+                f"    NMF ({n_components}) reconstruction error: "
+                f"{nmf_model_temp.reconstruction_err_:10f}"
+            )
             if comp_num == n_components:
-                X = X_temp
-                transformed = X.transform(intensities)
-                reconstructed = X.inverse_transform(transformed)
+                nmf_model = nmf_model_temp
+                transformed = nmf_model.transform(intensities)
+                reconstructed = nmf_model.inverse_transform(transformed)
     elif exp_win['enable']:
         # Does not perform calc_err for 1-10 components
         if exp_win['do_custom']:
@@ -95,9 +99,8 @@ def NMF_analysis(intensities, comp_num, *,
         else:
             win_comps = exp_win['comps']
 
-        print(f"DEBUG: win_comps:{list(win_comps)},win_ends:{list(win_ends)}")
-
-        X = NMF(n_components=win_comps[0], # 'first' iteration outside loop, warm-start inside loop
+        # 'first' iteration outside loop, warm-start inside loop
+        nmf_model = NMF(n_components=win_comps[0],
                   init=init,
                   solver=solver,
                   beta_loss=beta_loss,
@@ -106,36 +109,49 @@ def NMF_analysis(intensities, comp_num, *,
                   alpha_W=alpha_W,
                   alpha_H=alpha_H,
                   l1_ratio=l1_ratio)
-        X = X.fit(intensities[:win_ends[0],:])
-        W = X.transform(intensities[:win_ends[0],:])
-        H = X.components_
+        nmf_model = nmf_model.fit(intensities[:win_ends[0],:])
+        W = nmf_model.transform(intensities[:win_ends[0],:])
+        H = nmf_model.components_
         print(
             f"    NMF ({win_comps[0]}) [start to {win_ends[0]}] reconstruction error: "
-            f"{X.reconstruction_err_:10f}"
+            f"{nmf_model.reconstruction_err_:10f}"
         )
 
         for i, (win_end, win_comp) in enumerate(zip(win_ends[1:], win_comps[1:])):
             win_intensities = intensities[:win_end,:]
+            W_rows_old, prev_comp = W.shape
 
-            W_init, H_init = _initialize_nmf( # Create new W-rows for larger window
+            W_init, _ = _initialize_nmf( # Create new W-rows for larger window
                 win_intensities,
-                win_comp,
+                prev_comp,
                 init=init
             )
-            W_rows, W_cols = W.shape
 
-            W_vcrop = W_init[W_rows:,:W_cols] # Get only new rows, for vstack
-            W_hcrop = W_init[:,W_cols:] # Get only new columns, for hstack
-            print(f"DEBUG:\nW:{W.shape}\nW_vcrop:{W_vcrop.shape}")
+            W_vcrop = W_init[W_rows_old:,:] # Get new rows for vstack
             W = np.vstack([W, W_vcrop]) # Add news row to old W
-            print(f"DEBUG:\nW:{W.shape}\nW_hcrop:{W_hcrop.shape}")
-            W = np.hstack([W, W_hcrop]) # Add news columns to old W
-            print(f"DEBUG:\nW:{W.shape}")
-            H_vcrop = H_init[len(H):,:]
-            print(f"DEBUG:\nH:{H.shape}\nH_vcrop:{H_vcrop.shape}")
-            H = np.vstack([H, H_vcrop]) # Add news row to old W
+            if win_comp > prev_comp: # Fit residual of new window with old comps as new comps
+                win_reconstructed = nmf_model.inverse_transform(W)
 
-            X = NMF(n_components=win_comp, # initialize with 'custom' for W and H guesses
+                resid = np.maximum(win_intensities - win_reconstructed, 0) # Non-negative residual
+
+                # Fit residual as new comps
+                nmf_model_resid = NMF(n_components=win_comp-prev_comp,
+                  init=init,
+                  solver=solver,
+                  beta_loss=beta_loss,
+                  tol=tol,
+                  max_iter=max_iter,
+                  alpha_W=alpha_W,
+                  alpha_H=alpha_H,
+                  l1_ratio=l1_ratio)
+                nmf_model_resid = nmf_model_resid.fit(resid)
+                W_resid = nmf_model_resid.transform(resid)
+                H_resid = nmf_model_resid.components_
+
+                W = np.hstack([W, W_resid])
+                H = np.vstack([H, H_resid])
+            # Perform NMF on current window with prev+resid components
+            nmf_model = NMF(n_components=win_comp, # initialize with 'custom' for W and H guesses
                   init='custom',
                   solver=solver,
                   beta_loss=beta_loss,
@@ -144,20 +160,19 @@ def NMF_analysis(intensities, comp_num, *,
                   alpha_W=alpha_W,
                   alpha_H=alpha_H,
                   l1_ratio=l1_ratio)
-            X = X.fit(win_intensities, W=W, H=H)
-            W = X.transform(win_intensities)
-            H = X.components_
+            nmf_model = nmf_model.fit(win_intensities, W=W, H=H)
+            W = nmf_model.transform(win_intensities)
+            H = nmf_model.components_
             print(
                 f"    NMF ({win_comp}) [start to {win_end}] reconstruction error: "
-                f"{X.reconstruction_err_:10f}"
+                f"{nmf_model.reconstruction_err_:10f}"
             )
 
         transformed = W
-        reconstructed = X.inverse_transform(transformed)
-        print(f"    NMF ({win_comps[-1]}) reconstruction error: {X.reconstruction_err_:10f}")
+        reconstructed = nmf_model.inverse_transform(transformed)
 
     else:
-        X = NMF(n_components=comp_num,
+        nmf_model = NMF(n_components=comp_num,
                   init=init,
                   solver=solver,
                   beta_loss=beta_loss,
@@ -166,14 +181,14 @@ def NMF_analysis(intensities, comp_num, *,
                   alpha_W=alpha_W,
                   alpha_H=alpha_H,
                   l1_ratio=l1_ratio)
-        X = X.fit(intensities)
-        transformed = X.transform(intensities)
-        reconstructed = X.inverse_transform(transformed)
-        print(f"    NMF ({comp_num}) reconstruction error: {X.reconstruction_err_:10f}")
+        nmf_model = nmf_model.fit(intensities)
+        transformed = nmf_model.transform(intensities)
+        reconstructed = nmf_model.inverse_transform(transformed)
+        print(f"    NMF ({comp_num}) reconstruction error: {nmf_model.reconstruction_err_:10f}")
 
     if lift_factor < 0: # Lower data below zero again
         intensities += lift_factor
-        X.components_ += lift_factor
+        nmf_model.components_ += lift_factor
         reconstructed += lift_factor
 
     if rescale:
@@ -181,7 +196,7 @@ def NMF_analysis(intensities, comp_num, *,
         row_sums = np.sum(transformed, axis=1, keepdims=True) # Sums scores
         transformed = transformed / row_sums * 1 # Rescales scores so they sum to one
 
-    return X, transformed, reconstructed, errors, lift_factor
+    return nmf_model, transformed, reconstructed, errors, lift_factor
 
 def ICA_analysis(intensities, comp_num, *,
                  algorithm,
@@ -195,19 +210,19 @@ def ICA_analysis(intensities, comp_num, *,
     """
     Calls on sklearn's ICA algorithm and performs a fit to the user's dataset
     """
-    ica = FastICA(n_components=comp_num,
+    ica_model = FastICA(n_components=comp_num,
                   algorithm=algorithm,
                   whiten=whiten,
                   fun=fun,
                   max_iter=max_iter,
                   tol=tol,
                   whiten_solver=whiten_solver)
-    X = ica.fit(intensities)
-    transformed = ica.transform(intensities)
-    reconstructed = ica.inverse_transform(transformed)
+    X = ica_model.fit(intensities)
+    transformed = ica_model.transform(intensities)
+    reconstructed = ica_model.inverse_transform(transformed)
 
     if calc_err:
-        print(f"ICA does not return a numerical indication for goodness of fit")
+        print("ICA does not return a numerical indication for goodness of fit")
 
     return X, transformed, reconstructed
 
@@ -232,23 +247,26 @@ def SNMF_analysis(intensities, comp_num, *,
         errors = np.empty(len(n_components_list))
         for i, n_components in enumerate(n_components_list):
             print(f"Calculating SNMF reconstruction error for {n_components} components")
-            snmf = SNMFOptimizer(n_components=n_components,
+            snmf_model = SNMFOptimizer(n_components=n_components,
                                  min_iter=min_iter,
                                  max_iter=max_iter,
                                  tol=tol,
                                  rho=rho,
                                  eta=eta,
                                  show_plots=True)
-            X_temp = snmf.fit(intensities)
+            X_temp = snmf_model.fit(intensities)
             errors[i] = X_temp.reconstruction_err_
-            print(f"    SNMF ({n_components}) reconstruction error: {X_temp.reconstruction_err_:10f}")
+            print(
+                f"    SNMF ({n_components}) reconstruction error: "
+                f"{X_temp.reconstruction_err_:10f}"
+            )
             if comp_num == n_components:
                 X = X_temp
-                transformed = snmf.weights_
-                stretch = snmf.stretch_
-                reconstructed = _reconstruct_matrix(snmf.components_, transformed, stretch)
+                transformed = snmf_model.weights_
+                stretch = snmf_model.stretch_
+                reconstructed = _reconstruct_matrix(snmf_model.components_, transformed, stretch)
     else:
-        snmf = SNMFOptimizer(n_components=comp_num,
+        snmf_model = SNMFOptimizer(n_components=comp_num,
                              min_iter=min_iter,
                              max_iter=max_iter,
                              tol=tol,
@@ -257,10 +275,10 @@ def SNMF_analysis(intensities, comp_num, *,
                              show_plots=True,
                              verbose=True)
         errors = None
-        X = snmf.fit(intensities)
-        transformed = snmf.weights_
-        stretch = snmf.stretch_
-        reconstructed = _reconstruct_matrix(snmf.components_, transformed, stretch)
+        X = snmf_model.fit(intensities)
+        transformed = snmf_model.weights_
+        stretch = snmf_model.stretch_
+        reconstructed = _reconstruct_matrix(snmf_model.components_, transformed, stretch)
         print(f"    NMF ({comp_num}) reconstruction error: {X.reconstruction_err_:10f}")
 
     # Transpose to match sklearn
