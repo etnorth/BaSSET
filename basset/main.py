@@ -6,6 +6,12 @@ import sys
 import os
 from datetime import datetime
 
+import numpy as np
+import matplotlib.pyplot as plt
+import PyQt6.QtCore as qtc
+import PyQt6.QtWidgets as qtw
+import PyQt6.QtGui as qtg
+
 from basset.utils import (
     analysis,
     file_worker,
@@ -13,14 +19,8 @@ from basset.utils import (
     gui_helper
 )
 
-import numpy as np
-import matplotlib.pyplot as plt
-import PyQt6.QtCore as qtc
-import PyQt6.QtWidgets as qtw
-import PyQt6.QtGui as qtg
 
-
-import platform
+import platform # pylint: disable=wrong-import-order
 if platform.system() == "Windows":
     # Separates BaSSET from the "Pythonw.exe" ID so it can have its own tackbar icon
     import ctypes
@@ -82,7 +82,7 @@ class MainWindow(qtw.QMainWindow):
         ##### Input data widgets #####
         ##############################
         self.input_format_layout = qtw.QGridLayout()
-        self.grid.addLayout(self.input_format_layout, 0,0,2,1)
+        self.grid.addLayout(self.input_format_layout, 0,0,1,1)
 
         self.input_format_title = qtw.QLabel("Input format")
         self.input_format_title.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
@@ -137,8 +137,19 @@ class MainWindow(qtw.QMainWindow):
             else None
         )
 
+        self.normalize_checkbox = qtw.QCheckBox("Normalize")
+        self.normalize_checkbox.setToolTip("Normalizes the dataset intensities to 1")
+        self.indir_options_layout.addWidget(self.normalize_checkbox)
+        self.normalize_checkbox.hide()
+
+        #######################
+        ##### Input files #####
+        #######################
+        self.input_files_layout = qtw.QGridLayout()
+        self.grid.addLayout(self.input_files_layout, 0,1,1,2)
+
         self.indir_layout = qtw.QHBoxLayout()
-        self.grid.addLayout(self.indir_layout, 0,1,1,2)
+        self.input_files_layout.addLayout(self.indir_layout, 0,1)
 
         self.indir_label = qtw.QLabel("Select the folder containing your dataset")
         self.indir_label.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
@@ -157,7 +168,11 @@ class MainWindow(qtw.QMainWindow):
 
         self.bkg_layout = qtw.QHBoxLayout()
         self.bkg_layout.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
-        self.grid.addLayout(self.bkg_layout, 1,1,1,2)
+        self.input_files_layout.addLayout(self.bkg_layout, 1,1)
+
+        self.rm_bkg_button = qtw.QPushButton("Remove")
+        self.rm_bkg_button.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
+        self.bkg_layout.addWidget(self.rm_bkg_button)
 
         self.bkg_label = qtw.QLabel("Select a background for subtraction")
         self.bkg_label.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
@@ -167,10 +182,6 @@ class MainWindow(qtw.QMainWindow):
         self.bkg_label.setFrameShadow(qtw.QFrame.Shadow.Sunken)
         self.bkg_layout.addWidget(self.bkg_label)
 
-        self.rm_bkg_button = qtw.QPushButton("Remove")
-        self.rm_bkg_button.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
-        self.bkg_layout.addWidget(self.rm_bkg_button)
-
         self.bkg_scale_spinbox = gui_helper.SciSpinBox()
         self.bkg_scale_spinbox.setMinimum(0)
         self.bkg_scale_spinbox.setValue(1)
@@ -178,14 +189,49 @@ class MainWindow(qtw.QMainWindow):
                                           '(View in "Plot input dataset")')
         self.bkg_layout.addWidget(self.bkg_scale_spinbox)
 
-        self.getbkg_button = qtw.QPushButton("Load background")
-        self.getbkg_button.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
-        self.bkg_layout.addWidget(self.getbkg_button)
+        self.get_bkg_button = qtw.QPushButton("Load background")
+        self.get_bkg_button.setSizePolicy(
+            qtw.QSizePolicy.Policy.Fixed,
+            qtw.QSizePolicy.Policy.Fixed
+        )
+        self.bkg_layout.addWidget(self.get_bkg_button)
 
+        self.init_guess_layout = qtw.QHBoxLayout()
+        self.init_guess_layout.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
+        self.input_files_layout.addLayout(self.init_guess_layout, 2,1)
+
+        self.rm_guess_button = qtw.QPushButton("Remove")
+        self.rm_guess_button.setSizePolicy(
+            qtw.QSizePolicy.Policy.Fixed,
+            qtw.QSizePolicy.Policy.Fixed
+        )
+        self.init_guess_layout.addWidget(self.rm_guess_button)
+
+        self.init_guess_label = qtw.QLabel("Select a folder with initial guess at solution")
+        self.init_guess_label.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
+        self.init_guess_label.setMinimumWidth(350)
+        self.init_guess_label.setSizePolicy(
+            qtw.QSizePolicy.Policy.Preferred,
+            qtw.QSizePolicy.Policy.Fixed
+        )
+        self.init_guess_label.setFrameShape(qtw.QFrame.Shape.Panel)
+        self.init_guess_label.setFrameShadow(qtw.QFrame.Shadow.Sunken)
+        self.init_guess_layout.addWidget(self.init_guess_label)
+
+        self.get_init_guess_button = qtw.QPushButton("Load guess")
+        self.get_init_guess_button.setSizePolicy(
+            qtw.QSizePolicy.Policy.Fixed,
+            qtw.QSizePolicy.Policy.Fixed
+        )
+        self.init_guess_layout.addWidget(self.get_init_guess_button)
+
+        ##########################
+        ##### Limit Dataset ######
+        ##########################
         self.limit_dataset_layout = qtw.QGridLayout()
         self.grid.addLayout(self.limit_dataset_layout, 2,0)
 
-        self.limit_dataset_label = qtw.QLabel("Limit dataset")
+        self.limit_dataset_label = qtw.QLabel("Limit Dataset")
         self.limit_dataset_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
         self.limit_dataset_label.setSizePolicy(
             qtw.QSizePolicy.Policy.Minimum,
@@ -245,7 +291,10 @@ class MainWindow(qtw.QMainWindow):
         self.exp_win_layout = qtw.QGridLayout()
         self.grid.addLayout(self.exp_win_layout, 4,0)
 
-        self.exp_win_label = qtw.QLabel("Expanding window fitting")
+        ####################################
+        ##### Expanding Window Fitting #####
+        ####################################
+        self.exp_win_label = qtw.QLabel("Expanding Window Fitting")
         self.exp_win_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
         self.exp_win_label.setSizePolicy(
             qtw.QSizePolicy.Policy.Minimum,
@@ -297,6 +346,12 @@ class MainWindow(qtw.QMainWindow):
                 self.exp_win_custom_checkbox.setEnabled(value),
                 self.exp_win_comps_line.setEnabled(True),
                 self.exp_win_custom_checkbox.toggled.emit(self.exp_win_custom_checkbox.isChecked())
+            ) if value
+            else (
+                self.exp_win_custom_checkbox.setEnabled(value),
+                self.exp_win_num_spinbox.setEnabled(value),
+                self.exp_win_comps_line.setEnabled(value),
+                self.exp_win_custom_line.setEnabled(value)
             )
         )
         self.exp_win_custom_checkbox.toggled.connect(
@@ -336,8 +391,7 @@ class MainWindow(qtw.QMainWindow):
 
         self.snmf_button = qtw.QRadioButton("SNMF")
         self.snmf_button.setToolTip("Stretched Non-Negative Matrix Factorization (diffpy)\n"
-                                   "WARNING: The SNMF algorithm takes a lot of time.\n"
-                                   "Error calculation will not be performed.")
+                                   "WARNING: The SNMF algorithm takes a lot of time.")
         self.algorithm_layout.addWidget(self.snmf_button, 2,0)
 
         self.calc_err_checkbox = qtw.QCheckBox("Calculate errors")
@@ -846,9 +900,9 @@ class MainWindow(qtw.QMainWindow):
             else None
         )
 
-        ##############################
-        # Reconstructions to display # (REPLACE WITH COMMA-SEPARATED LINEEDIT)
-        ##############################
+        ######################################
+        ##### Reconstructions to display ##### (REPLACE WITH COMMA-SEPARATED LINEEDIT)
+        ######################################
         self.recon_plot_layout = qtw.QGridLayout()
         self.grid.addLayout(self.recon_plot_layout, 4,2)
         self.recon_plot_layout.setAlignment(qtc.Qt.AlignmentFlag.AlignTop)
@@ -993,15 +1047,21 @@ class MainWindow(qtw.QMainWindow):
         ################################
         ##### Function connections #####
         ################################
-        self.indir_button.clicked.connect(self.set_indir)
+        self.indir_button.clicked.connect(self.set_datadir)
         self.indir_button.clicked.connect(self.update_config_file)
-        self.getbkg_button.clicked.connect(self.set_bkgfile)
-        self.getbkg_button.clicked.connect(self.update_config_file)
+        self.get_bkg_button.clicked.connect(self.set_bkgfile)
+        self.get_bkg_button.clicked.connect(self.update_config_file)
         self.bkg_scale_spinbox.valueChanged.connect(self.update_config_file)
         self.rm_bkg_button.clicked.connect(
             lambda: self.bkg_label.setText("Select a background for subtraction")
         )
         self.rm_bkg_button.clicked.connect(self.update_config_file)
+        self.get_init_guess_button.clicked.connect(self.set_guessdir)
+        self.get_init_guess_button.clicked.connect(self.update_config_file)
+        self.rm_guess_button.clicked.connect(
+            lambda: self.init_guess_label.setText("Select a folder with initial guess at solution")
+        )
+        self.rm_guess_button.clicked.connect(self.update_config_file)
         self.input_format_group.buttonClicked.connect(self.update_config_file)
         self.input_format_group.buttonClicked.connect(self.set_widget_limits)
         self.convert_to_q_checkbox.clicked.connect(self.update_config_file)
@@ -1051,9 +1111,12 @@ class MainWindow(qtw.QMainWindow):
                        self.ica_algorithm_widgets +
                        self.snmf_algorithm_widgets):
             widget.hide()
+            self.calc_err_checkbox.setEnabled(False)
+            self.exp_win_enable_checkbox.setEnabled(False)
         match self.algorithm_group.checkedButton().text():
             case "PCA":
-                self.calc_err_checkbox.setEnabled(True)
+                self.calc_err_checkbox.setChecked(False)
+                self.exp_win_enable_checkbox.setChecked(False)
                 self.pca_whiten_checkbox.show()
                 self.pca_solver_dropdown.show()
                 if self.pca_solver_dropdown.currentText=='arpack':
@@ -1072,6 +1135,7 @@ class MainWindow(qtw.QMainWindow):
                     self.pca_power_iteration_normalizer_dropdown.hide()
             case "NMF":
                 self.calc_err_checkbox.setEnabled(True)
+                self.exp_win_enable_checkbox.setEnabled(True)
                 for widget in self.nmf_algorithm_widgets:
                     widget.show()
                 if self.nmf_solver_dropdown.currentText=='mu':
@@ -1084,12 +1148,12 @@ class MainWindow(qtw.QMainWindow):
                     self.nmf_l1_ratio_spinbox.show()
             case "ICA":
                 self.calc_err_checkbox.setChecked(False)
-                self.calc_err_checkbox.setEnabled(False)
+                self.exp_win_enable_checkbox.setChecked(False)
                 for widget in self.ica_algorithm_widgets:
                     widget.show()
             case "SNMF":
-                self.calc_err_checkbox.setChecked(False)
-                self.calc_err_checkbox.setEnabled(False)
+                self.calc_err_checkbox.setEnabled(True)
+                self.exp_win_enable_checkbox.setChecked(False)
                 for widget in self.snmf_algorithm_widgets:
                     widget.show()
 
@@ -1102,12 +1166,12 @@ class MainWindow(qtw.QMainWindow):
         for widget in self.reconstruct_widgets[self.comp_num_slider.value():]:
             widget.hide()
 
-    def set_indir(self, indir=None):
+    def set_datadir(self, indir=None):
         """
         Sets the dataset directory and gets details for widget behavior
         """
-        if not indir: # None from function def, False from "Load directory" widget
-            if self.indir_label.text() == "Select the folder containing your data files":
+        if not indir: # Both "None" and "False" pass as False
+            if self.indir_label.text() == "Select the folder containing your dataset":
                 indir = str(qtw.QFileDialog.getExistingDirectory(self))
             else:
                 indir = str(qtw.QFileDialog.getExistingDirectory(
@@ -1124,8 +1188,8 @@ class MainWindow(qtw.QMainWindow):
                 self,
                 "Dataset",
                 "Could not import dataset.\n\n"
-                f"Details:\n{type(e).__name__}: {e}\n\n"
                 "Ensure directory and files exist and are in the correct format."
+                f"Details:\n{type(e).__name__}: {e}\n\n"
             )
             return
 
@@ -1133,7 +1197,7 @@ class MainWindow(qtw.QMainWindow):
         gui_helper.add_recent(
             indir,
             self.file_submenu_recent_dirs,
-            action_func=self.set_indir,
+            action_func=self.set_datadir,
             update_func=self.update_config_file
         )
 
@@ -1141,7 +1205,7 @@ class MainWindow(qtw.QMainWindow):
         """
         Sets the background file, tests its validity and imports it
         """
-        print("Importing background")
+        print(f"Importing background from {infile}")
         if not infile: # Both "None" and "False" pass as False
             if self.bkg_label.text() == "Select a background for subtraction":
                 infile,_ = qtw.QFileDialog.getOpenFileName(
@@ -1164,8 +1228,8 @@ class MainWindow(qtw.QMainWindow):
                 self,
                 "Background",
                 "Could not import background.\n\n"
-                f"Details:\n{type(e).__name__}: {e}\n\n"
                 "Ensure file exists and is in the correct format."
+                f"Details:\n{type(e).__name__}: {e}\n\n"
             )
         else:
             self.bkg_label.setText(infile)
@@ -1176,6 +1240,26 @@ class MainWindow(qtw.QMainWindow):
                 update_func=self.update_config_file
             )
             print("Background imported\n")
+
+    def set_guessdir(self, indir=None):
+        """
+        Selects the initial guess directory and tests its validity
+        """
+        if not indir: # Both "None" and "False" pass as False
+            if self.indir_label.text() == "Select the folder containing your initial guess":
+                indir = str(qtw.QFileDialog.getExistingDirectory(
+                    self,
+                    directory=self.indir_label.text()
+                )) # Qt handles invalid-directory, so no try-except is needed
+            else:
+                indir = str(qtw.QFileDialog.getExistingDirectory(
+                    self,
+                    directory=self.indir_label.text())
+                )
+            if indir == "": # If the operation was cancelled
+                return
+
+        self.init_guess_label.setText(indir)
 
     def set_widget_limits(self, indir=None):
         """
@@ -1225,9 +1309,8 @@ class MainWindow(qtw.QMainWindow):
                     match name:
                         case "Current file directory":
                             if os.path.exists(value):
-                                self.indir_label.setText(value)
-                                self.set_indir(value)
-                            elif value!="Select the folder containing your data files":
+                                self.set_datadir(value)
+                            else:
                                 print(f"{value} is not a valid directory")
                         case "Recent directories":
                             for indir in reversed(value.split(", ")):
@@ -1235,11 +1318,14 @@ class MainWindow(qtw.QMainWindow):
                                     gui_helper.add_recent(
                                         indir,
                                         self.file_submenu_recent_dirs,
-                                        action_func=self.set_indir,
+                                        action_func=self.set_datadir,
                                         update_func=self.update_config_file
                                     )
                         case "Background file":
-                            self.bkg_label.setText(value)
+                            if os.path.isfile(value):
+                                self.set_bkgfile(value)
+                            else:
+                                print(f"{value} is not a valid file")
                         case "Background scale":
                             self.bkg_scale_spinbox.setValue(float(value))
                         case "Recent backgrounds":
@@ -1251,6 +1337,11 @@ class MainWindow(qtw.QMainWindow):
                                         action_func=self.set_bkgfile,
                                         update_func=self.update_config_file
                                     )
+                        case "Initial guess directory":
+                            if os.path.exists(value):
+                                self.set_guessdir(value)
+                            else:
+                                print(f"{value} is not a valid directory")
                         case "Input format":
                             for button in self.input_format_group.buttons():
                                 if value == button.text():
@@ -1324,7 +1415,7 @@ class MainWindow(qtw.QMainWindow):
         with open(self.configfile, "w", encoding='utf-8') as outfile:
             outfile.write(f"Current file directory: {
                 self.indir_label.text()
-                if self.indir_label.text()!='Select the folder containing your data files'
+                if self.indir_label.text()!="Select the folder containing your dataset"
                 else ''
             }\n")
             outfile.write(f"Recent directories: {', '.join(
@@ -1343,6 +1434,11 @@ class MainWindow(qtw.QMainWindow):
                     action.text()
                     for action in self.file_submenu_recent_bkgs.actions()[:-2]
                 )}\n")
+            outfile.write(f"Initial guess directory: {
+                self.init_guess_label.text()
+                if self.init_guess_label.text()!="Select a folder with initial guess at solution"
+                else ''
+            }\n")
             outfile.write(f"Input format: {self.input_format_group.checkedButton().text()}\n")
             outfile.write(f"Convert to Q: {self.convert_to_q_checkbox.isChecked()}\n")
             outfile.write(f"Wavelength: {self.wavelength_widget.value():.6f}\n")
@@ -1362,13 +1458,11 @@ class MainWindow(qtw.QMainWindow):
             outfile.write(f"Number of components: {self.comp_num_slider.value()}\n")
             outfile.write(f"Calculate errors: {self.calc_err_checkbox.isChecked()}\n")
 
-    def plot_dataset(self):
+    def preprocess(self):
         """
-        Plots the input dataset as a waterfall plot
+        Imports necessary files and performs wanted pre-processing before display/analysis
         """
-        print("Plotting input dataset\n")
-
-        if self.angles is None or self.intensities is None:
+        if self.angles is None or self.intensities is None: # Import if not previously imported
             try:
                 self.angles, self.intensities = file_worker.import_dataset(self.indir_label.text())
             except (FileNotFoundError, ValueError, IOError) as e:
@@ -1376,19 +1470,13 @@ class MainWindow(qtw.QMainWindow):
                     self,
                     "Dataset",
                     "Could not import dataset.\n\n"
-                    f"Details:\n{type(e).__name__}: {e}\n\n"
                     "Ensure directory and files exist and are in the correct format."
+                    f"Details:\n{type(e).__name__}: {e}\n\n"
                 )
                 return
 
         angles = self.angles.copy()
         intensities = self.intensities.copy()
-
-        if self.convert_to_q_checkbox.isChecked():
-            xlabel = self.q_button.text()
-            angles = funcs.theta_to_q(angles, self.wavelength_widget.value())
-        else:
-            xlabel = self.input_format_group.checkedButton().text()
 
         if self.bkg_label.text() != "Select a background for subtraction":
             try:
@@ -1398,8 +1486,8 @@ class MainWindow(qtw.QMainWindow):
                     self,
                     "Background",
                     "Could not import background.\n\n"
-                    f"Details:\n{type(e).__name__}: {e}\n\n"
                     "Ensure file exists and is in the correct format."
+                    f"Details:\n{type(e).__name__}: {e}\n\n"
                 )
                 return
             try:
@@ -1409,17 +1497,41 @@ class MainWindow(qtw.QMainWindow):
                     self,
                     "Background subtraction",
                     "Could not perform background subtraction.\n\n"
-                    f"Details:\n{type(e).__name__}: {e}\n\n"
                     "Ensure dataset and background are equally long or remove background."
+                    f"Details:\n{type(e).__name__}: {e}\n\n"
                 )
                 return
 
-        if self.limit_scans_checkbox.isChecked():
-            loopmin = self.scanmin_spinbox.value()-2
-            loopmax = self.scanmax_spinbox.value()-1
-        else:
-            loopmin = -1
-            loopmax = len(intensities)-1
+        if self.convert_to_q_checkbox.isChecked():
+            angles = funcs.theta_to_q(angles, self.wavelength_widget.value())
+
+        if self.limit_xaxis_checkbox.isChecked(): # Crop xrange
+            xmin_index = np.searchsorted(angles[0], self.xmin_spinbox.value(), side='left')
+            xmax_index = np.searchsorted(angles[0], self.xmax_spinbox.value(), side='right')
+            angles = angles[:,xmin_index:xmax_index]
+            intensities = intensities[:,xmin_index:xmax_index]
+
+        if self.limit_scans_checkbox.isChecked(): # Crop scans
+            scanmin = self.scanmin_spinbox.value()
+            scanmax = self.scanmax_spinbox.value()
+            angles = angles[scanmin:scanmax,:]
+            intensities = intensities[scanmin:scanmax,:]
+
+        if self.normalize_checkbox.isChecked(): # Normalize
+            intensities = funcs.normalize_dataset(intensities)
+
+        return angles, intensities
+
+    def plot_dataset(self):
+        """
+        Plots the input dataset as a waterfall plot
+        """
+        print("Plotting input dataset\n")
+
+        data = self.preprocess()
+        if data is None:
+            return
+        angles, intensities = data
 
         fig = plt.figure()
         cmap = plt.get_cmap('inferno')
@@ -1427,18 +1539,22 @@ class MainWindow(qtw.QMainWindow):
         stagger_factor = np.max(intensities) / (15*len(intensities))
         stagger_max = 0
 
-        for i in range(loopmax, loopmin, -1): # Plots in reverse so last scan is behind
-            yaxis = intensities[i]+i*stagger_factor
+        for i in range(len(intensities)-1, -1, -1): # Plots in reverse so last scan is behind
+            yaxis = intensities[i] + i*stagger_factor
             plt.plot(angles[i], yaxis, color=colors[i])
             stagger_max = max(stagger_max,np.max(yaxis))
 
-        plt.xlabel(xlabel)
-        plt.ylabel("Intensity (staggered) [A.U.]")
-
-        if self.limit_xaxis_checkbox.isChecked():
-            plt.xlim(self.xmin_spinbox.value(), self.xmax_spinbox.value())
+        if self.convert_to_q_checkbox.isChecked():
+            plt.xlabel(self.q_button.text())
         else:
-            plt.xlim(min(angles[i]), max(angles[i]))
+            plt.xlabel(self.input_format_group.checkedButton().text())
+
+        if self.normalize_checkbox.isChecked():
+            plt.ylabel("Normalized intensity (staggered) [A.U.]")
+        else:
+            plt.ylabel("Intensity (staggered) [A.U.]")
+
+        plt.xlim(np.min(angles), np.max(angles))
 
         if self.input_format_group.checkedButton().text()=="r [Å]":
             plt.ylim(np.min(intensities)*1.005, stagger_max*1.005)
@@ -1457,6 +1573,7 @@ class MainWindow(qtw.QMainWindow):
                 manager.full_screen_toggle() # Fallback for some backends
 
         fig.show()
+
         if self.export_results_checkbox.isChecked():
             if not os.path.exists(f"{self.indir_label.text()}/BaSSET_results"):
                 os.mkdir(f"{self.indir_label.text()}/BaSSET_results")
@@ -1469,61 +1586,38 @@ class MainWindow(qtw.QMainWindow):
         and sends results to plotting
         """
         print("Beginning analysis...")
-        comp_num = self.comp_num_slider.value()
 
-        if self.angles is None or self.intensities is None:
+        data = self.preprocess()
+        if data is None:
+            return
+        angles, intensities = data
+
+        if (
+            self.algorithm_group.checkedButton().text()=="NMF"
+            and self.init_guess_label.text() != "Select a folder with initial guess at solution"
+        ):
             try:
-                self.angles, self.intensities = file_worker.import_dataset(self.indir_label.text())
+                init_components, init_scores = file_worker.import_init_guess(
+                    self.init_guess_label.text()
+                )
+                if (
+                    init_scores is not None
+                    and init_scores.shape[1] != intensities.shape[1]
+                ): # Expand features
+                    raise ValueError(
+                        f"Expected {intensities.shape[1]} data points in guessed components, "
+                        f"but got {init_scores.shape[1]}"
+                    )
+
             except (FileNotFoundError, ValueError, IOError) as e:
                 qtw.QMessageBox.critical(
                     self,
-                    "Dataset",
-                    "Could not import dataset.\n\n"
+                    "Initial guess",
+                    "Could not import initial guess.\n\n"
+                    "Ensure directory and files exist and are in the correct formats.\n"
                     f"Details:\n{type(e).__name__}: {e}\n\n"
-                    "Ensure directory and files exist and are in the correct format."
                 )
                 return
-
-        angles = self.angles.copy()
-        intensities = self.intensities.copy()
-
-        if self.bkg_label.text() != "Select a background for subtraction":
-            try:
-                _, bkgintensity = file_worker.import_data(self.bkg_label.text())
-            except (FileNotFoundError, ValueError, IOError) as e:
-                qtw.QMessageBox.critical(
-                    self,
-                    "Background",
-                    "Could not import background.\n\n"
-                    f"Details:\n{type(e).__name__}: {e}\n\n"
-                    "Ensure file exists and is in the correct format."
-                )
-                return
-            try:
-                intensities -= bkgintensity*self.bkg_scale_spinbox.value()
-            except ValueError as e:
-                qtw.QMessageBox.critical(
-                    self,
-                    "Background subtraction",
-                    "Could not perform background subtraction.\n\n"
-                    f"Details:\n{type(e).__name__}: {e}\n\n"
-                    "Ensure dataset and background are equally long or remove background."
-                )
-                return
-
-        if self.convert_to_q_checkbox.isChecked():
-            angles = funcs.theta_to_q(angles, self.wavelength_widget.value())
-
-        if self.limit_xaxis_checkbox.isChecked(): # Crop xrange
-            xmin_index = np.searchsorted(angles[0], self.xmin_spinbox.value(), side='left')
-            xmax_index = np.searchsorted(angles[0], self.xmax_spinbox.value(), side='right')
-            angles = angles[:,xmin_index:xmax_index]
-            intensities = intensities[:,xmin_index:xmax_index]
-        if self.limit_scans_checkbox.isChecked(): # Crop scans
-            scanmin = self.scanmin_spinbox.value()-1
-            scanmax = self.scanmax_spinbox.value()-1
-            angles = angles[scanmin:scanmax,:]
-            intensities = intensities[scanmin:scanmax,:]
 
         errors = None
         lift_factor = None
@@ -1532,7 +1626,7 @@ class MainWindow(qtw.QMainWindow):
             case "PCA":
                 fitted, transformed, reconstructed = analysis.PCA_analysis(
                     intensities,
-                    comp_num,
+                    comp_num=self.comp_num_slider.value(),
                     whiten=self.pca_whiten_checkbox.isChecked(),
                     svd_solver=self.pca_solver_dropdown.currentText(),
                     tol=self.pca_tol_spinbox.value(),
@@ -1549,7 +1643,7 @@ class MainWindow(qtw.QMainWindow):
             case "NMF":
                 fitted, transformed, reconstructed, errors, lift_factor = analysis.NMF_analysis(
                     intensities,
-                    comp_num,
+                    comp_num=self.comp_num_slider.value(),
                     init=self.nmf_init_dropdown.currentText(),
                     solver=self.nmf_solver_dropdown.currentText(),
                     beta_loss=(
@@ -1582,12 +1676,28 @@ class MainWindow(qtw.QMainWindow):
                             dtype=int,
                             sep=','
                         )
-                    }
+                    },
+                    W = (
+                        init_scores
+                        if (
+                            self.init_guess_label.text()
+                            != "Select a folder with initial guess at solution"
+                        )
+                        else None
+                    ),
+                    H = (
+                        init_components
+                        if (
+                            self.init_guess_label.text()
+                            != "Select a folder with initial guess at solution"
+                        )
+                        else None
+                    )
                 )
             case "ICA":
                 fitted, transformed, reconstructed = analysis.ICA_analysis(
                     intensities,
-                    comp_num,
+                    comp_num=self.comp_num_slider.value(),
                     algorithm=self.ica_algorithm_dropdown.currentText(),
                     whiten=(
                         False
@@ -1597,13 +1707,12 @@ class MainWindow(qtw.QMainWindow):
                     fun=self.ica_fun_dropdown.currentText(),
                     max_iter=self.ica_max_iter_spinbox.value(),
                     tol=self.ica_tol_spinbox.value(),
-                    whiten_solver=self.ica_whiten_solver_dropdown.currentText(),
-                    calc_err=self.calc_err_checkbox.isChecked()
+                    whiten_solver=self.ica_whiten_solver_dropdown.currentText()
                 )
             case "SNMF":
                 fitted, transformed, reconstructed, errors, stretch = analysis.SNMF_analysis(
                     intensities,
-                    comp_num,
+                    comp_num=self.comp_num_slider.value(),
                     min_iter=self.snmf_min_iter_spinbox.value(),
                     max_iter=self.snmf_max_iter_spinbox.value(),
                     tol=self.snmf_tol_spinbox.value(),
@@ -1614,18 +1723,19 @@ class MainWindow(qtw.QMainWindow):
 
         print("Analysis completed\n")
         self.plot_analysis(
-            comp_num,
             angles,
             intensities,
             fitted,
             transformed,
             reconstructed,
+            comp_num=self.comp_num_slider.value(),
             errors=errors,
             lift_factor=lift_factor,
             stretch=stretch
         )
 
-    def plot_analysis(self, comp_num, angles, intensities, fitted, transformed, reconstructed, *,
+    def plot_analysis(self, angles, intensities, fitted, transformed, reconstructed, *,
+                      comp_num,
                       errors=None,
                       lift_factor=None,
                       stretch=None
@@ -1699,7 +1809,7 @@ class MainWindow(qtw.QMainWindow):
             ax_recon.set_xlabel(xlabel)
             ax_recon.sharex(ax_comp)
             ax_recon.set_ylim(
-                0.05*(np.min(difference)-distance)*1.05 - max(
+                1.05*(np.min(difference)-distance) - 0.05*max(
                     np.max(intensities[recon_num[i]]),
                     np.max(reconstructed[recon_num[i]])
                 ),
@@ -1783,8 +1893,15 @@ class MainWindow(qtw.QMainWindow):
         ax_errors.set_xlabel("# of Components")
 
         fig.canvas.manager.set_window_title(
-            f"{self.algorithm_group.checkedButton().text()} ({comp_num}): "
-            f"x:({self.xmin_spinbox.value()},{self.xmax_spinbox.value()})"
+            f"{self.algorithm_group.checkedButton().text()} ({comp_num}), "
+            f"{self.input_format_group.checkedButton().text()}: ({
+                "full" if not self.limit_xaxis_checkbox.isChecked()
+                else (self.xmin_spinbox.value(),self.xmax_spinbox.value())
+            }), "
+            f"scans: ({
+                "full" if not self.limit_scans_checkbox.isChecked()
+                else (self.scanmin_spinbox.value(),self.scanmax_spinbox.value())
+            })"
         )
 
         # Maximize window
@@ -1857,7 +1974,7 @@ class MainWindow(qtw.QMainWindow):
                 case "NMF":
                     outfile.write(
                         "Initialization method: "
-                        "{self.nmf_init_dropdown.currentText()}\n"
+                        f"{self.nmf_init_dropdown.currentText()}\n"
                         )
                     outfile.write(f"Numerical solver: {self.nmf_solver_dropdown.currentText()}\n")
                     if self.nmf_solver_dropdown.currentText()=='mu':

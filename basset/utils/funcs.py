@@ -5,39 +5,37 @@ Module with functions used in or across BaSSET
 import numpy as np
 
 
-def theta_to_q(angles, wavelength):
+def theta_to_q(angle, wavelength):
     """
     Converts a dataset from 2theta to Q
 
     Parameters
     ----------
-    angles: float or ndarray
+    angle: float or ndarray
         Angle to be converted from 2theta to Q or
-        2D array of shape (samples, features) with a dataset's angles
+        array with dataset angles
     wavelength: float
         Wavelength used for data collection, given in angstrom
     
     Returns
     -------
     ndarray
-        2D array of shape (samples, features) with the input dataset converted to Q
+        Array with input dataset converted to Q
     """
-    return ((4*np.pi) / wavelength) * np.sin(np.deg2rad(angles)/2)
+    return ((4*np.pi) / wavelength) * np.sin(np.deg2rad(angle)/2)
 
-def normalize_dataset(intensities):
+def normalize_dataset(dataset):
     """
     Normalizes a dataset
 
     Parameters
     ----------
-    intensities: ndarray
-        2D array of shape (samples, features) with a dataset's intensities
+    dataset: ndarray
+        Array of dataset values
     
     Returns
     -------
     ndarray
-        2D array of shape (samples, features) with the input dataset noralized
+        Array of dataset normalized to largest dataset value
     """
-    for i, intensity in enumerate(intensities):
-        intensities[i] = intensity / intensity.max()
-    return intensities
+    return dataset / np.max(dataset)

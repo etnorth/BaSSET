@@ -1,6 +1,7 @@
 """
 Module to handle importing and exporting of files
 """
+# pylint: disable=consider-using-enumerate
 
 import os
 from glob import glob
@@ -10,7 +11,7 @@ from natsort import natsorted
 import numpy as np
 
 
-def most_common_filetype(indir):
+def most_common_filetype(indir: str):
     """
     Finds the most common filetype in a given directory
 
@@ -24,6 +25,9 @@ def most_common_filetype(indir):
     filetype: str
         Most common filetype in directory
     """
+    if len(glob(f"{indir}*")) == 0:
+        print(f"\tFound {len(glob(f"{indir}*"))} files in {indir}")
+        return None
     filetypes = {}
     for file_extension in [os.path.splitext(filename)[-1] for filename in glob(f"{indir}*")]:
         # Gets extension of each filename in folder
@@ -37,7 +41,7 @@ def most_common_filetype(indir):
     if len(popular_filetypes)>1:
         raise NotImplementedError("Multiple equally popular filetypes found:" \
                                   f"({popular_filetypes}). Check dir and e-run")
-    print(f"Most common filetype in supplied directory is {filetype}")
+    print(f"\tMost common filetype: {filetype}")
     return filetype
 
 def get_dataset_details(indir: str):
@@ -57,7 +61,7 @@ def get_dataset_details(indir: str):
     num_scans: int
         The number of scans in the dataset
     """
-    print("Getting dataset details")
+    print(f"Getting dataset details from {indir}")
     if not indir.endswith(os.path.sep):
         indir += os.path.sep
 
@@ -70,14 +74,14 @@ def get_dataset_details(indir: str):
     xmax = np.max(x)
     num_scans = len(filenames)
     print(
-        f"Minimum angle: {xmin}\n"
-        f"Maximum angle: {xmax}\n"
-        f"Number of scans {num_scans}"
+        f"\tMinimum angle: {xmin}\n"
+        f"\tMaximum angle: {xmax}\n"
+        f"\tNumber of scans {num_scans}"
     )
 
     return xmin, xmax, num_scans
 
-def import_data(filename):
+def import_data(filename: str):
     """
     Takes in a file to find continous two-column datasets and return them
 
@@ -111,7 +115,7 @@ def import_data(filename):
 
         raise ValueError(f"Couldn't find data in {filename}")
 
-def import_dataset(indir):
+def import_dataset(indir: str):
     """
     Imports data from all files in chosen directory of given filetype
     
@@ -133,9 +137,9 @@ def import_dataset(indir):
 
     filetype = most_common_filetype(indir)
 
-    print(f"Looking for files in \"...{indir[-41:-1]}\" of type {filetype}")
+    print(f"\tLooking for files in \"...{indir[-41:-1]}\" of type {filetype}")
     filenames = natsorted(glob(f"{indir}*{filetype}"))
-    print(f"Found {len(filenames)} files of filetype {filetype}")
+    print(f"\tFound {len(filenames)} files of filetype {filetype}")
 
     x_data = []
     y_data = []
@@ -148,9 +152,9 @@ def import_dataset(indir):
     print("Dataset imported\n")
     return np.array(x_data), np.array(y_data)
 
-def import_scores(filename, comp_num):
+def import_score(filename: str, comp_num: int):
     """
-    Imports scores from BaSSET's generated scores.csv file
+    Imports a components' score from BaSSET's generated scores.csv file
     
     Parameters
     ----------
@@ -158,6 +162,7 @@ def import_scores(filename, comp_num):
         Filepath pointing to comma-separated n-column data file (scores.csv)
     comp_num: int
         Which component (column) to extract from scores file
+
     Returns
     -------
     ndarray
@@ -165,12 +170,64 @@ def import_scores(filename, comp_num):
     """
     comp_scale = []
     with open(filename, 'r', encoding='utf-8') as infile:
-        print(comp_num)
         for line in infile.readlines()[1:]:
             words = line.split(',')
             comp_scale.append(float(words[comp_num-1]))
     print("Scores imported")
     return np.array(comp_scale)
+
+def import_init_guess(indir: str):
+    """
+    Imports provided initial guess of components and scores
+
+    Parameters
+    ----------
+    indir: str
+        Directory containing files for initial guess (components and/or scores)
+
+    Returns
+    -------
+    init_components: ndarray
+        2D array of shape (comp_num, features)
+    init_scores: ndarray
+        2D array of shape (samples, comp_num)
+
+    """
+    print("Importing initial guess")
+    if not indir.endswith(os.path.sep):
+        indir += os.path.sep
+
+    filetype = most_common_filetype(indir)
+
+    print(f"\tLooking for component files in \"...{indir[-41:-1]}\" of type {filetype}")
+    filenames = natsorted(glob(f"{indir}*{filetype}"))
+    print(f"\tFound {len(filenames)} files of filetype {filetype}")
+
+    if len(filenames)==0:
+        print("No components found, will initialize according to algorithm parameters")
+        init_components = None
+    else:
+        init_components = []
+        for filename in filenames:
+            _, y = import_data(filename)
+            init_components.append(y)
+        init_components = np.array(init_components)
+        print("Components imported")
+
+    print("Looking for scores file")
+    scoresfile = glob(f"{indir}*.csv")
+
+    if len(scoresfile) > 1:
+        raise ValueError(f"Expected 1 file of type csv, but found {len(scoresfile)}")
+
+    if len(scoresfile)==0:
+        print("No scores found, will initialize according to algorithm parameters")
+        init_scores = None
+    else:
+        init_scores = np.loadtxt(scoresfile[0], skiprows=1, delimiter=',')
+        print("Scores imported")
+
+    return init_components, init_scores
 
 def write_components(angles, results_path, fitted):
     """
@@ -286,20 +343,28 @@ def write_comp_contribute(angles, results_path, fitted, transformed, stretch=Non
         for comp_num, component in enumerate(fitted.components_):
             os.mkdir(f"{results_path}/component_contributions/component_{comp_num+1:02}")
             for i in range(len(transformed)): # Number of scans
-                with open(f"{results_path}/component_contributions/component_{comp_num+1:02}/c{comp_num+1:02}_contribution_scan_{i}.xy",
+                with open(f"{results_path}/component_contributions/"
+                          f"component_{comp_num+1:02}/c{comp_num+1:02}_contribution_scan_{i}.xy",
                           'w',
                           encoding='utf-8') as outfile:
                     for j in range(len(angles[comp_num])): # Index in scan
-                        outfile.write(f"{angles[i][j]/stretch[i][comp_num]}\t{component[j]*transformed[i][comp_num]}\n") # Component multiplied by its scoring at that scan number
+                        outfile.write(
+                            f"{angles[i][j]/stretch[i][comp_num]}"
+                            f"\t{component[j]*transformed[i][comp_num]}\n"
+                        ) # Component multiplied by its scoring at that scan number
     else:
         for comp_num, component in enumerate(fitted.components_):
             os.mkdir(f"{results_path}/component_contributions/component_{comp_num+1:02}")
             for i in range(len(transformed)): # Number of scans
-                with open(f"{results_path}/component_contributions/component_{comp_num+1:02}/c{comp_num+1:02}_contribution_scan_{i}.xy",
+                with open(f"{results_path}/component_contributions/component_"
+                          f"{comp_num+1:02}/c{comp_num+1:02}_contribution_scan_{i}.xy",
                           'w',
                           encoding='utf-8') as outfile:
                     for j in range(len(angles[comp_num])): # Index in scan
-                        outfile.write(f"{angles[i][j]}\t{component[j]*transformed[i][comp_num]}\n")# Component multiplied by its scoring at that scan number
+                        outfile.write(
+                            f"{angles[i][j]}"
+                            f"\t{component[j]*transformed[i][comp_num]}\n"
+                        )# Component multiplied by its scoring at that scan number
     print("Component contributions written")
 
 def write_stretch(results_path, stretch):

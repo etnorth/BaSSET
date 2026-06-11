@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "BaSSET-UiO"
-version = "1.4.0a1"
+version = "1.4.2a"
 dependencies = [
     "natsort",
     "numpy",
@@ -44,7 +44,8 @@ packages = ["basset"]
 
 [tool.setuptools.package-data]
 basset = [
-    "assets/*"
+    "assets/*",
+    "utils/*"
 ]
 
 [project.urls]

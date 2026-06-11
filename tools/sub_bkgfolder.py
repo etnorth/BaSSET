@@ -3,7 +3,7 @@ import os
 from basset.utils.file_worker import (
     import_data,
     import_dataset,
-    import_scores
+    import_score
 )
 
 import numpy as np
@@ -89,7 +89,7 @@ def main():
             dataset_x = dataset_x[:,xmin_index:xmax_index]
             dataset_y = dataset_y[:,xmin_index:xmax_index]
 
-        comp_scale = import_scores(SCORES_FILEPATH)
+        comp_scale = import_score(SCORES_FILEPATH)
         scaledComp = scaleComp(comp_y, comp_scale)
         write_scaledComp(comp_x, scaledComp, COMPNUM, OUTDIR) if EXPORT_SCALEDCOMP else None
         write_bkgFileSubtracted(dataset_x, dataset_y, scaledComp, COMPNUM, OUTDIR)
