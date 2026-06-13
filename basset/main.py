@@ -1592,6 +1592,8 @@ class MainWindow(qtw.QMainWindow):
             return
         angles, intensities = data
 
+        init_components = None
+        init_scores = None
         if (
             self.algorithm_group.checkedButton().text()=="NMF"
             and self.init_guess_label.text() != "Select a folder with initial guess at solution"
