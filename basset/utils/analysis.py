@@ -171,36 +171,20 @@ def NMF_analysis(intensities, comp_num, *,
             win_intensities = intensities[:win_end,:]
             W_rows_old, prev_comp = W.shape
 
-            W_init, _ = _initialize_nmf( # Create new W-rows for larger window
+            W_init, H_init = _initialize_nmf( # Create scores and components for larger window
                 win_intensities,
-                prev_comp,
+                win_comp,
                 init=init
             )
 
             W_vcrop = W_init[W_rows_old:,:] # Get new rows for vstack
-            W = np.vstack([W, W_vcrop]) # Add new rows to old W
-            if win_comp > prev_comp: # Fit residual of new window with old comps as new comps
-                win_reconstructed = nmf_model.inverse_transform(W)
+            W_hcrop = W_init[:,prev_comp:] # Get new cols for hstack
+            W = np.vstack([W, W_vcrop])
+            W = np.hstack([W, W_hcrop])
 
-                resid = np.maximum(win_intensities - win_reconstructed, 0) # Non-negative residual
+            H_vcrop = H_init[prev_comp:,:] # Get new components (if win_comp=prev_comp stacks None)
+            H = np.vstack([H, H_vcrop])
 
-                # Fit residual as new comps
-                nmf_model_resid = NMF(n_components=win_comp-prev_comp,
-                  init=init,
-                  solver=solver,
-                  beta_loss=beta_loss,
-                  tol=tol,
-                  max_iter=max_iter,
-                  alpha_W=alpha_W,
-                  alpha_H=alpha_H,
-                  l1_ratio=l1_ratio)
-                nmf_model_resid = nmf_model_resid.fit(resid)
-                W_resid = nmf_model_resid.transform(resid)
-                H_resid = nmf_model_resid.components_
-
-                W = np.hstack([W, W_resid])
-                H = np.vstack([H, H_resid])
-            # Perform NMF on current window with prev+resid components
             nmf_model = NMF(n_components=win_comp, # initialize with 'custom' for W and H guesses
                   init='custom',
                   solver=solver,
