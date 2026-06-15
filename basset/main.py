@@ -109,6 +109,7 @@ class MainWindow(qtw.QMainWindow):
         self.indir_options_layout = qtw.QHBoxLayout()
         self.input_format_layout.addLayout(self.indir_options_layout, 2,0,1,3)
 
+
         self.convert_to_q_checkbox = qtw.QCheckBox("Convert to Q")
         self.convert_to_q_checkbox.setToolTip("Uses supplied wavelength to display data in Q [Å⁻¹]")
         self.indir_options_layout.addWidget(self.convert_to_q_checkbox)
@@ -328,7 +329,7 @@ class MainWindow(qtw.QMainWindow):
         self.exp_win_comps_line = qtw.QLineEdit()
         self.exp_win_comps_line.setDisabled(True)
         self.exp_win_comps_line.setToolTip(
-            "Enter how many components you'd like for each window\n"
+            "Enter how many components you'd like for each window separated by comma (,)\n"
             "(leave empty for all components from the start)"
         )
         self.exp_win_layout.addWidget(self.exp_win_comps_line, 2,1,1,2)
@@ -474,9 +475,9 @@ class MainWindow(qtw.QMainWindow):
         "auto (default): Chooses solver based on size of dataset and number of components\n" \
         "full: Runs exact full SVD\n" \
         "covariance_eigh: Precomputes covarience for eigenvalue decompositon.\n" \
-        "    Efficient for many scans of few datapoints (rare for scattering)\n" \
+        "\tEfficient for many scans of few datapoints (rare for scattering)\n" \
         "arpack: Runs SVD truncated to number of components.\n" \
-        "    Requires fewer components than number of scans\n" \
+        "\tRequires fewer components than number of scans\n" \
         "randomized: Runs randomized SVD")
 
         # Only for 'arpack' solver
@@ -584,7 +585,7 @@ class MainWindow(qtw.QMainWindow):
         "('mu' gives poor results with 'nndsvd' as it cannot update zeros in initialization)")
 
         self.nmf_max_iter_spinbox = qtw.QSpinBox()
-        self.nmf_max_iter_spinbox.setMinimum(0)
+        self.nmf_max_iter_spinbox.setMinimum(1)
         self.nmf_max_iter_spinbox.setMaximum(999999)
         self.nmf_max_iter_spinbox.setValue(2500)
         self.algorithm_parameters_layout.addWidget(self.nmf_max_iter_spinbox, 2,0)
@@ -719,7 +720,7 @@ class MainWindow(qtw.QMainWindow):
         )
 
         self.ica_max_iter_spinbox = qtw.QSpinBox()
-        self.ica_max_iter_spinbox.setMinimum(0)
+        self.ica_max_iter_spinbox.setMinimum(1)
         self.ica_max_iter_spinbox.setMaximum(999999)
         self.ica_max_iter_spinbox.setValue(2500)
         self.algorithm_parameters_layout.addWidget(self.ica_max_iter_spinbox, 2,0)
@@ -783,7 +784,7 @@ class MainWindow(qtw.QMainWindow):
         "Minimum number of iterations before terminating optimzation")
 
         self.snmf_max_iter_spinbox = qtw.QSpinBox()
-        self.snmf_max_iter_spinbox.setMinimum(0)
+        self.snmf_max_iter_spinbox.setMinimum(1)
         self.snmf_max_iter_spinbox.setMaximum(999999)
         self.snmf_max_iter_spinbox.setValue(500)
         self.algorithm_parameters_layout.addWidget(self.snmf_max_iter_spinbox, 2,1)
@@ -900,76 +901,15 @@ class MainWindow(qtw.QMainWindow):
             else None
         )
 
-        ######################################
-        ##### Reconstructions to display ##### (REPLACE WITH COMMA-SEPARATED LINEEDIT)
-        ######################################
-        self.recon_plot_layout = qtw.QGridLayout()
-        self.grid.addLayout(self.recon_plot_layout, 4,2)
-        self.recon_plot_layout.setAlignment(qtc.Qt.AlignmentFlag.AlignTop)
-
-        self.reconstruct_label = qtw.QLabel("Display Reconstruction Scan #")
-        self.reconstruct_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
-        self.reconstruct_label.setSizePolicy(
-            qtw.QSizePolicy.Policy.Minimum,
-            qtw.QSizePolicy.Policy.Fixed
+        self.display_recon_line = qtw.QLineEdit()
+        self.display_recon_line.setToolTip(
+            "Enter scan numbers to display reconstruction of separated by comma (,)\n"
+            "(empty or missing scans: fills with uniform distribution)"
         )
-        self.recon_plot_layout.addWidget(self.reconstruct_label, 4,0,1,2)
+        self.results_layout.addWidget(self.display_recon_line, 2,0,1,2)
 
-        self.reconstruct_widgets = []
-
-        self.reconstruct_widget0 = qtw.QSpinBox()
-        self.reconstruct_widget0.setMinimum(0)
-        self.recon_plot_layout.addWidget(self.reconstruct_widget0, 5,0)
-        self.reconstruct_widget0.setToolTip(
-            "If any are '0',"
-            "will reconstruct uniform distribution of scans"
-        )
-        self.reconstruct_widgets.append(self.reconstruct_widget0)
-
-        self.reconstruct_widget1 = qtw.QSpinBox()
-        self.reconstruct_widget1.setMinimum(0)
-        self.recon_plot_layout.addWidget(self.reconstruct_widget1, 5,1)
-        self.reconstruct_widgets.append(self.reconstruct_widget1)
-
-        self.reconstruct_widget2 = qtw.QSpinBox()
-        self.reconstruct_widget2.setMinimum(0)
-        self.recon_plot_layout.addWidget(self.reconstruct_widget2, 6,0)
-        self.reconstruct_widgets.append(self.reconstruct_widget2)
-
-        self.reconstruct_widget3 = qtw.QSpinBox()
-        self.reconstruct_widget3.setMinimum(0)
-        self.recon_plot_layout.addWidget(self.reconstruct_widget3, 6,1)
-        self.reconstruct_widgets.append(self.reconstruct_widget3)
-
-        self.reconstruct_widget4 = qtw.QSpinBox()
-        self.reconstruct_widget4.setMinimum(0)
-        self.recon_plot_layout.addWidget(self.reconstruct_widget4, 7,0)
-        self.reconstruct_widgets.append(self.reconstruct_widget4)
-
-        self.reconstruct_widget5 = qtw.QSpinBox()
-        self.reconstruct_widget5.setMinimum(0)
-        self.recon_plot_layout.addWidget(self.reconstruct_widget5, 7,1)
-        self.reconstruct_widgets.append(self.reconstruct_widget5)
-
-        self.reconstruct_widget6 = qtw.QSpinBox()
-        self.reconstruct_widget6.setMinimum(0)
-        self.recon_plot_layout.addWidget(self.reconstruct_widget6, 8,0)
-        self.reconstruct_widgets.append(self.reconstruct_widget6)
-
-        self.reconstruct_widget7 = qtw.QSpinBox()
-        self.reconstruct_widget7.setMinimum(0)
-        self.recon_plot_layout.addWidget(self.reconstruct_widget7, 8,1)
-        self.reconstruct_widgets.append(self.reconstruct_widget7)
-
-        self.reconstruct_widget8 = qtw.QSpinBox()
-        self.reconstruct_widget8.setMinimum(0)
-        self.recon_plot_layout.addWidget(self.reconstruct_widget8, 9,0)
-        self.reconstruct_widgets.append(self.reconstruct_widget8)
-
-        self.reconstruct_widget9 = qtw.QSpinBox()
-        self.reconstruct_widget9.setMinimum(0)
-        self.recon_plot_layout.addWidget(self.reconstruct_widget9, 9,1)
-        self.reconstruct_widgets.append(self.reconstruct_widget9)
+        self.grid.setColumnStretch(3,1)
+        self.grid.setRowStretch(5,1)
 
         ########################
         ##### Top bar menu #####
@@ -1037,12 +977,13 @@ class MainWindow(qtw.QMainWindow):
         about_button.triggered.connect(self.about_button_clicked)
         help_menu.addAction(about_button)
 
-        ##### Setup GUI according to config
+        #########################################
+        ##### Setup GUI according to config #####
+        #########################################
         if os.path.exists(self.configfile):
             self.read_config_file()
 
         self.display_algorithm_widgets()
-        self.display_reconstruction_widgets()
 
         ################################
         ##### Function connections #####
@@ -1082,7 +1023,6 @@ class MainWindow(qtw.QMainWindow):
             lambda value: self.comp_num_label.setText(str(value))
         )
         self.comp_num_slider.valueChanged.connect(self.update_config_file)
-        self.comp_num_slider.valueChanged.connect(self.display_reconstruction_widgets)
         self.run_analysis_button.clicked.connect(self.run_analysis)
 
     def closeEvent(self, event): # pylint: disable=invalid-name,unused-argument
@@ -1111,60 +1051,47 @@ class MainWindow(qtw.QMainWindow):
                        self.ica_algorithm_widgets +
                        self.snmf_algorithm_widgets):
             widget.hide()
-            self.calc_err_checkbox.setEnabled(False)
-            self.exp_win_enable_checkbox.setEnabled(False)
+
+        self.calc_err_checkbox.setChecked(False)
+        self.calc_err_checkbox.setEnabled(False)
+        self.exp_win_enable_checkbox.setChecked(False)
+        self.exp_win_enable_checkbox.setEnabled(False)
+        self.rm_guess_button.setEnabled(False)
+        self.init_guess_label.setEnabled(False)
+        self.get_init_guess_button.setEnabled(False)
+
         match self.algorithm_group.checkedButton().text():
             case "PCA":
-                self.calc_err_checkbox.setChecked(False)
-                self.exp_win_enable_checkbox.setChecked(False)
                 self.pca_whiten_checkbox.show()
                 self.pca_solver_dropdown.show()
-                if self.pca_solver_dropdown.currentText=='arpack':
+                if self.pca_solver_dropdown.currentText()=='arpack':
                     self.pca_tol_spinbox.show()
-                else:
-                    self.pca_tol_spinbox.hide()
-                if self.pca_solver_dropdown.currentText=='randomized':
+                elif self.pca_solver_dropdown.currentText()=='randomized':
                     self.pca_iterated_power_auto_checkbox.show()
                     self.pca_iterated_power_spinbox.show()
                     self.pca_n_oversampled_spinbox.show()
                     self.pca_power_iteration_normalizer_dropdown.show()
-                else:
-                    self.pca_iterated_power_auto_checkbox.hide()
-                    self.pca_iterated_power_spinbox.hide()
-                    self.pca_n_oversampled_spinbox.hide()
-                    self.pca_power_iteration_normalizer_dropdown.hide()
             case "NMF":
                 self.calc_err_checkbox.setEnabled(True)
                 self.exp_win_enable_checkbox.setEnabled(True)
+                self.rm_guess_button.setEnabled(True)
+                self.init_guess_label.setEnabled(True)
+                self.get_init_guess_button.setEnabled(True)
                 for widget in self.nmf_algorithm_widgets:
                     widget.show()
-                if self.nmf_solver_dropdown.currentText=='mu':
+                if self.nmf_solver_dropdown.currentText()=='mu':
+                    self.nmf_l1_ratio_spinbox.hide()
                     self.nmf_beta_loss_dropdown.show()
-                else:
+                elif self.nmf_solver_dropdown.currentText()=='cd':
                     self.nmf_beta_loss_dropdown.hide()
-                if self.nmf_solver_dropdown.currentText=='cd':
-                    self.nmf_l1_ratio_spinbox.show()
-                else:
                     self.nmf_l1_ratio_spinbox.show()
             case "ICA":
-                self.calc_err_checkbox.setChecked(False)
-                self.exp_win_enable_checkbox.setChecked(False)
                 for widget in self.ica_algorithm_widgets:
                     widget.show()
             case "SNMF":
                 self.calc_err_checkbox.setEnabled(True)
-                self.exp_win_enable_checkbox.setChecked(False)
                 for widget in self.snmf_algorithm_widgets:
                     widget.show()
-
-    def display_reconstruction_widgets(self):
-        """
-        Displays widgets for reconstructions equaling number of components, and hides the rest
-        """
-        for widget in self.reconstruct_widgets[:self.comp_num_slider.value()]:
-            widget.show()
-        for widget in self.reconstruct_widgets[self.comp_num_slider.value():]:
-            widget.hide()
 
     def set_datadir(self, indir=None):
         """
@@ -1287,8 +1214,6 @@ class MainWindow(qtw.QMainWindow):
 
         self.scanmin_spinbox.setMaximum(scanmax)
         self.scanmax_spinbox.setMaximum(scanmax)
-        for widget in self.reconstruct_widgets:
-            widget.setMaximum(scanmax)
 
         if isinstance(indir,str):
             self.xmin_spinbox.setValue(xmin)
@@ -1473,7 +1398,7 @@ class MainWindow(qtw.QMainWindow):
                     "Ensure directory and files exist and are in the correct format."
                     f"Details:\n{type(e).__name__}: {e}\n\n"
                 )
-                return
+                return None
 
         angles = self.angles.copy()
         intensities = self.intensities.copy()
@@ -1489,7 +1414,7 @@ class MainWindow(qtw.QMainWindow):
                     "Ensure file exists and is in the correct format."
                     f"Details:\n{type(e).__name__}: {e}\n\n"
                 )
-                return
+                return None
             try:
                 intensities -= bkgintensity*self.bkg_scale_spinbox.value()
             except ValueError as e:
@@ -1500,7 +1425,7 @@ class MainWindow(qtw.QMainWindow):
                     "Ensure dataset and background are equally long or remove background."
                     f"Details:\n{type(e).__name__}: {e}\n\n"
                 )
-                return
+                return None
 
         if self.convert_to_q_checkbox.isChecked():
             angles = funcs.theta_to_q(angles, self.wavelength_widget.value())
@@ -1526,7 +1451,7 @@ class MainWindow(qtw.QMainWindow):
         """
         Plots the input dataset as a waterfall plot
         """
-        print("Plotting input dataset\n")
+        print("Plotting input dataset")
 
         data = self.preprocess()
         if data is None:
@@ -1585,8 +1510,6 @@ class MainWindow(qtw.QMainWindow):
         passes analysis to algorithms,
         and sends results to plotting
         """
-        print("Beginning analysis...")
-
         data = self.preprocess()
         if data is None:
             return
@@ -1610,7 +1533,6 @@ class MainWindow(qtw.QMainWindow):
                         f"Expected {intensities.shape[1]} data points in guessed components, "
                         f"but got {init_scores.shape[1]}"
                     )
-
             except (FileNotFoundError, ValueError, IOError) as e:
                 qtw.QMessageBox.critical(
                     self,
@@ -1621,6 +1543,17 @@ class MainWindow(qtw.QMainWindow):
                 )
                 return
 
+            if self.limit_xaxis_checkbox.isChecked(): # Crop xrange
+                xmin_index = np.searchsorted(angles[0], self.xmin_spinbox.value(), side='left')
+                xmax_index = np.searchsorted(angles[0], self.xmax_spinbox.value(), side='right')
+                init_components = init_components[:,xmin_index:xmax_index]
+
+            if self.limit_scans_checkbox.isChecked(): # Crop scans
+                scanmin = self.scanmin_spinbox.value()
+                scanmax = self.scanmax_spinbox.value()
+                init_components = init_components[scanmin:scanmax,:]
+
+        print("Beginning analysis")
         errors = None
         lift_factor = None
         stretch = None
@@ -1750,21 +1683,12 @@ class MainWindow(qtw.QMainWindow):
         else:
             xlabel = self.input_format_group.checkedButton().text()
 
-        recon_num = []
-        for widget in self.reconstruct_widgets:
-            if widget.isVisible():
-                recon_num.append(widget.value()-1)
-        if any(x>len(reconstructed) for x in recon_num):
-            print("Reconstruction scan larger than number of scans." \
-                  "Defaulting to uniform distribution")
-            recon_num[0]=-1
-
-        if any(x==-1 for x in recon_num): # any reconstuction widgets are 0, is -1 due to line above
-            recon_num = list(np.linspace(
-                0, len(reconstructed), comp_num-1,
-                endpoint=False, dtype=int
-            ))
-            recon_num.append(len(reconstructed)-1) # append end-point to get first and last scan
+        recon_num = np.zeros(self.comp_num_slider.value(), dtype=int)
+        user_recons = np.fromstring(self.display_recon_line.text(), dtype=int, sep=',')
+        recon_num[:len(user_recons)] = user_recons
+        if (recon_num == 0).any():
+            uniform_recons = np.linspace(0, len(reconstructed)-1, comp_num, dtype=int)
+            recon_num[len(user_recons):] = uniform_recons[len(user_recons):]
 
         cmap = plt.get_cmap('inferno')
         colors = cmap(np.linspace(0, 0.8, comp_num))

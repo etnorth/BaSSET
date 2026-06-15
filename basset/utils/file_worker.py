@@ -11,7 +11,7 @@ from natsort import natsorted
 import numpy as np
 
 
-def most_common_filetype(indir: str):
+def most_common_filetype(indir: str, verbose=True):
     """
     Finds the most common filetype in a given directory
 
@@ -19,6 +19,8 @@ def most_common_filetype(indir: str):
     ----------
     indir: str
         Dirpath pointing to a directory of files
+    verbose: bool
+        Controls print statements
 
     Returns
     -------
@@ -41,7 +43,10 @@ def most_common_filetype(indir: str):
     if len(popular_filetypes)>1:
         raise NotImplementedError("Multiple equally popular filetypes found:" \
                                   f"({popular_filetypes}). Check dir and e-run")
-    print(f"\tMost common filetype: {filetype}")
+
+    if verbose:
+        print(f"\tMost common filetype: {filetype}")
+
     return filetype
 
 def get_dataset_details(indir: str):
@@ -61,11 +66,10 @@ def get_dataset_details(indir: str):
     num_scans: int
         The number of scans in the dataset
     """
-    print(f"Getting dataset details from {indir}")
     if not indir.endswith(os.path.sep):
         indir += os.path.sep
 
-    filetype = most_common_filetype(indir)
+    filetype = most_common_filetype(indir, verbose=False)
     filenames = natsorted(glob(f"{indir}*{filetype}"))
 
     x,_ = import_data(filenames[0])
@@ -73,11 +77,6 @@ def get_dataset_details(indir: str):
     xmin = np.min(x)
     xmax = np.max(x)
     num_scans = len(filenames)
-    print(
-        f"\tMinimum angle: {xmin}\n"
-        f"\tMaximum angle: {xmax}\n"
-        f"\tNumber of scans {num_scans}"
-    )
 
     return xmin, xmax, num_scans
 
@@ -149,7 +148,7 @@ def import_dataset(indir: str):
         x_data.append(x)
         y_data.append(y)
 
-    print("Dataset imported\n")
+    print("Dataset imported")
     return np.array(x_data), np.array(y_data)
 
 def import_score(filename: str, comp_num: int):
