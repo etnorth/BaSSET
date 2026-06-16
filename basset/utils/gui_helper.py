@@ -29,7 +29,7 @@ class AboutDialog(qtw.QDialog):
         self.logo.setAlignment(qtc.Qt.AlignmentFlag.AlignTop | qtc.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.logo)
 
-        self.version = qtw.QLabel("Version: 1.4.3a")
+        self.version = qtw.QLabel("Version: 1.4.3a1")
         self.version.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.version)
 
