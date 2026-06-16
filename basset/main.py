@@ -1121,6 +1121,8 @@ class MainWindow(qtw.QMainWindow):
             return
 
         self.indir_label.setText(indir)
+        self.angles = None
+        self.intensities = None
         gui_helper.add_recent(
             indir,
             self.file_submenu_recent_dirs,
