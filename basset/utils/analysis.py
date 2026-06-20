@@ -47,7 +47,8 @@ def NMF_analysis(intensities, comp_num, *,
                  rescale,
                  exp_win,
                  W,
-                 H
+                 H,
+                 verbose=0
 ):
     """
     Calls on sklearn's NMF algorithm and performs a fit to the user's dataset
@@ -101,7 +102,8 @@ def NMF_analysis(intensities, comp_num, *,
                 max_iter=max_iter,
                 alpha_W=alpha_W,
                 alpha_H=alpha_H,
-                l1_ratio=l1_ratio)
+                l1_ratio=l1_ratio,
+                verbose=verbose)
         nmf_model = nmf_model.fit(intensities, W=W, H=H)
         transformed = nmf_model.transform(intensities)
         reconstructed = nmf_model.inverse_transform(transformed)
@@ -122,7 +124,8 @@ def NMF_analysis(intensities, comp_num, *,
                       max_iter=max_iter,
                       alpha_W=alpha_W,
                       alpha_H=alpha_H,
-                      l1_ratio=l1_ratio)
+                      l1_ratio=l1_ratio,
+                      verbose=verbose)
             nmf_model_temp = nmf_model.fit(intensities)
             errors[i] = nmf_model_temp.reconstruction_err_
             print(
@@ -137,10 +140,10 @@ def NMF_analysis(intensities, comp_num, *,
 
     elif exp_win['enable']:
         print("\tPerforming NMF with expanded window fitting")
-        # Does not perform calc_err for 1-10 components
         if exp_win['do_custom']:
             if exp_win['win_custom'][-1] < len(intensities): # Makes sure it includes entire set
                 exp_win['win_custom'] = np.hstack([exp_win['win_custom'],(len(intensities)+1)])
+                exp_win['comps'] = np.hstack([exp_win['comps'], comp_num]) #Assume win.len==comp.len
             win_ends = exp_win['win_custom']
         else: # Creates num_win windows with uniform distribution
             win_ends = np.linspace(
@@ -163,7 +166,8 @@ def NMF_analysis(intensities, comp_num, *,
                   max_iter=max_iter,
                   alpha_W=alpha_W,
                   alpha_H=alpha_H,
-                  l1_ratio=l1_ratio)
+                  l1_ratio=l1_ratio,
+                  verbose=verbose)
         nmf_model = nmf_model.fit(intensities[:win_ends[0],:])
         W = nmf_model.transform(intensities[:win_ends[0],:])
         H = nmf_model.components_
@@ -198,7 +202,8 @@ def NMF_analysis(intensities, comp_num, *,
                   max_iter=max_iter,
                   alpha_W=alpha_W,
                   alpha_H=alpha_H,
-                  l1_ratio=l1_ratio)
+                  l1_ratio=l1_ratio,
+                  verbose=verbose)
             nmf_model = nmf_model.fit(win_intensities, W=W, H=H)
             W = nmf_model.transform(win_intensities)
             H = nmf_model.components_
@@ -219,7 +224,8 @@ def NMF_analysis(intensities, comp_num, *,
                   max_iter=max_iter,
                   alpha_W=alpha_W,
                   alpha_H=alpha_H,
-                  l1_ratio=l1_ratio)
+                  l1_ratio=l1_ratio,
+                  verbose=verbose)
         nmf_model = nmf_model.fit(intensities)
         transformed = nmf_model.transform(intensities)
         reconstructed = nmf_model.inverse_transform(transformed)
@@ -229,11 +235,6 @@ def NMF_analysis(intensities, comp_num, *,
         intensities += lift_factor
         nmf_model.components_ += lift_factor
         reconstructed += lift_factor
-
-    if rescale:
-        print("Rescaling")
-        row_sums = np.sum(transformed, axis=1, keepdims=True) # Sums scores per sample
-        transformed = (transformed / row_sums) * 1 # Rescales scores so they sum to one per sample
 
     return nmf_model, transformed, reconstructed, errors, lift_factor
 
@@ -267,15 +268,18 @@ def SNMF_analysis(intensities, comp_num, *,
                   tol,
                   rho,
                   eta,
-                  calc_err
+                  calc_err,
+                  verbose=False
 ):
     """
     Calls on diffpy's stretched-nmf and performs a fit to the user's dataset
     """
-    # SNMF automatically handles lifts negative values, so no if-case needed
-    print("SNMF reconstruction error calculation is disabled due to slow convergence")
-
     intensities = intensities.T # SNMF: (n_features,n_samples), sklearn: (n_samples,n_features)
+
+    lift_factor = intensities.min()
+    if lift_factor < 0:
+        intensities -= lift_factor
+        print("Negative value found in dataset. Lifting data above zero")
 
     if calc_err:
         n_components_list = np.arange(1, min(10,*np.shape(intensities))+1, dtype=int)
@@ -288,7 +292,8 @@ def SNMF_analysis(intensities, comp_num, *,
                                  tol=tol,
                                  rho=rho,
                                  eta=eta,
-                                 show_plots=True)
+                                 show_plots=True,
+                                 verbose=verbose)
             X_temp = snmf_model.fit(intensities)
             errors[i] = X_temp.reconstruction_err_
             print(
@@ -308,13 +313,18 @@ def SNMF_analysis(intensities, comp_num, *,
                              rho=rho,
                              eta=eta,
                              show_plots=True,
-                             verbose=True)
+                             verbose=verbose)
         errors = None
         X = snmf_model.fit(intensities)
         transformed = snmf_model.weights_
         stretch = snmf_model.stretch_
         reconstructed = _reconstruct_matrix(snmf_model.components_, transformed, stretch)
         print(f"\tNMF ({comp_num}) reconstruction error: {X.reconstruction_err_:10f}")
+
+    if lift_factor < 0: # Lower data below zero again
+        intensities += lift_factor
+        snmf_model.components_ += lift_factor
+        reconstructed += lift_factor
 
     # Transpose to match sklearn
     X.components_ = X.components_.T

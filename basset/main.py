@@ -16,6 +16,7 @@ from basset.utils import (
     analysis,
     file_worker,
     funcs,
+    gui_algorithms,
     gui_helper
 )
 
@@ -72,7 +73,7 @@ class MainWindow(qtw.QMainWindow):
 
         self.setWindowIcon(qtg.QIcon(f"{self.configpath}/assets/icon.ico"))
         self.setWindowTitle("Battery Signal Selection and Enhancement Toolbox")
-        self.resize(qtc.QSize(640,480))
+        self.resize(qtc.QSize(1000,500))
         self.central_widget = qtw.QWidget(self)
         self.grid = qtw.QGridLayout()
         self.central_widget.setLayout(self.grid)
@@ -110,15 +111,8 @@ class MainWindow(qtw.QMainWindow):
         self.input_format_layout.addLayout(self.indir_options_layout, 2,0,1,3)
 
 
-        self.convert_to_q_checkbox = qtw.QCheckBox("Convert to Q")
-        self.convert_to_q_checkbox.setToolTip("Uses supplied wavelength to display data in Q [Å⁻¹]")
-        self.indir_options_layout.addWidget(self.convert_to_q_checkbox)
-        self.input_format_group.buttonClicked.connect(
-            lambda button: self.convert_to_q_checkbox.setEnabled(True)
-            if button==self.theta_button
-            else self.convert_to_q_checkbox.setDisabled(True)
-        )
-        self.r_button.clicked.connect(lambda: self.convert_to_q_checkbox.setChecked(False))
+        self.wavelength_label = qtw.QLabel("Wavelength")
+        self.indir_options_layout.addWidget(self.wavelength_label)
 
         self.wavelength_widget = qtw.QDoubleSpinBox(decimals=6)
         self.wavelength_widget.setMinimum(0)
@@ -126,6 +120,7 @@ class MainWindow(qtw.QMainWindow):
         self.wavelength_widget.setSuffix(' Å')
         self.wavelength_widget.setValue(1.540598)
         self.wavelength_widget.setButtonSymbols(qtw.QAbstractSpinBox.ButtonSymbols.NoButtons)
+        self.wavelength_widget.setToolTip("Radiation wavelength in Å")
         self.indir_options_layout.addWidget(self.wavelength_widget)
         self.input_format_group.buttonClicked.connect(
             lambda button: self.wavelength_widget.setEnabled(True)
@@ -138,6 +133,16 @@ class MainWindow(qtw.QMainWindow):
             else None
         )
 
+        self.convert_to_q_checkbox = qtw.QCheckBox("Convert to Q")
+        self.convert_to_q_checkbox.setToolTip("Uses supplied wavelength to display data in Q [Å⁻¹]")
+        self.indir_options_layout.addWidget(self.convert_to_q_checkbox)
+        self.input_format_group.buttonClicked.connect(
+            lambda button: self.convert_to_q_checkbox.setEnabled(True)
+            if button==self.theta_button
+            else self.convert_to_q_checkbox.setDisabled(True)
+        )
+        self.r_button.clicked.connect(lambda: self.convert_to_q_checkbox.setChecked(False))
+
         self.normalize_checkbox = qtw.QCheckBox("Normalize")
         self.normalize_checkbox.setToolTip("Normalizes the dataset intensities to 1")
         self.indir_options_layout.addWidget(self.normalize_checkbox)
@@ -147,6 +152,7 @@ class MainWindow(qtw.QMainWindow):
         ##### Input files #####
         #######################
         self.input_files_layout = qtw.QGridLayout()
+        self.input_files_layout.setRowStretch(3,1)
         self.grid.addLayout(self.input_files_layout, 0,1,1,2)
 
         self.indir_layout = qtw.QHBoxLayout()
@@ -170,61 +176,6 @@ class MainWindow(qtw.QMainWindow):
         self.bkg_layout = qtw.QHBoxLayout()
         self.bkg_layout.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
         self.input_files_layout.addLayout(self.bkg_layout, 1,1)
-
-        self.rm_bkg_button = qtw.QPushButton("Remove")
-        self.rm_bkg_button.setSizePolicy(qtw.QSizePolicy.Policy.Fixed, qtw.QSizePolicy.Policy.Fixed)
-        self.bkg_layout.addWidget(self.rm_bkg_button)
-
-        self.bkg_label = qtw.QLabel("Select a background for subtraction")
-        self.bkg_label.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
-        self.bkg_label.setMinimumWidth(350)
-        self.bkg_label.setSizePolicy(qtw.QSizePolicy.Policy.Preferred, qtw.QSizePolicy.Policy.Fixed)
-        self.bkg_label.setFrameShape(qtw.QFrame.Shape.Panel)
-        self.bkg_label.setFrameShadow(qtw.QFrame.Shadow.Sunken)
-        self.bkg_layout.addWidget(self.bkg_label)
-
-        self.bkg_scale_spinbox = gui_helper.SciSpinBox()
-        self.bkg_scale_spinbox.setMinimum(0)
-        self.bkg_scale_spinbox.setValue(1)
-        self.bkg_scale_spinbox.setToolTip('Scale your background to match dataset\n' \
-                                          '(View in "Plot input dataset")')
-        self.bkg_layout.addWidget(self.bkg_scale_spinbox)
-
-        self.get_bkg_button = qtw.QPushButton("Load background")
-        self.get_bkg_button.setSizePolicy(
-            qtw.QSizePolicy.Policy.Fixed,
-            qtw.QSizePolicy.Policy.Fixed
-        )
-        self.bkg_layout.addWidget(self.get_bkg_button)
-
-        self.init_guess_layout = qtw.QHBoxLayout()
-        self.init_guess_layout.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
-        self.input_files_layout.addLayout(self.init_guess_layout, 2,1)
-
-        self.rm_guess_button = qtw.QPushButton("Remove")
-        self.rm_guess_button.setSizePolicy(
-            qtw.QSizePolicy.Policy.Fixed,
-            qtw.QSizePolicy.Policy.Fixed
-        )
-        self.init_guess_layout.addWidget(self.rm_guess_button)
-
-        self.init_guess_label = qtw.QLabel("Select a folder with initial guess at solution")
-        self.init_guess_label.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
-        self.init_guess_label.setMinimumWidth(350)
-        self.init_guess_label.setSizePolicy(
-            qtw.QSizePolicy.Policy.Preferred,
-            qtw.QSizePolicy.Policy.Fixed
-        )
-        self.init_guess_label.setFrameShape(qtw.QFrame.Shape.Panel)
-        self.init_guess_label.setFrameShadow(qtw.QFrame.Shadow.Sunken)
-        self.init_guess_layout.addWidget(self.init_guess_label)
-
-        self.get_init_guess_button = qtw.QPushButton("Load guess")
-        self.get_init_guess_button.setSizePolicy(
-            qtw.QSizePolicy.Policy.Fixed,
-            qtw.QSizePolicy.Policy.Fixed
-        )
-        self.init_guess_layout.addWidget(self.get_init_guess_button)
 
         ##########################
         ##### Limit Dataset ######
@@ -289,70 +240,166 @@ class MainWindow(qtw.QMainWindow):
         )
         self.grid.addWidget(self.plot_data_button, 3,0)
 
-        self.exp_win_layout = qtw.QGridLayout()
-        self.grid.addLayout(self.exp_win_layout, 4,0)
+        ##############################
+        ##### Additional Options #####
+        ##############################
+        self.add_options_layout = qtw.QGridLayout()
+        self.grid.addLayout(self.add_options_layout, 4,0)
+
+        self.add_options_label = qtw.QLabel("Additional Options")
+        self.add_options_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
+        self.add_options_label.setSizePolicy(
+            qtw.QSizePolicy.Policy.Minimum,
+            qtw.QSizePolicy.Policy.Fixed
+        )
+        self.add_options_layout.addWidget(self.add_options_label, 0,0,1,3)
+
+        ######################
+        ##### Background #####
+        ######################
+        self.bkg_checkbox = qtw.QCheckBox("Subtract background")
+        self.add_options_layout.addWidget(self.bkg_checkbox,1,0)
+        self.bkg_checkbox.setToolTip("Set and scale a background file to subtract from all scans")
+
+        self.bkg_label = qtw.QLabel("Select a background for subtraction")
+        self.bkg_label.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
+        self.bkg_label.setMinimumWidth(350)
+        self.bkg_label.setSizePolicy(qtw.QSizePolicy.Policy.Preferred, qtw.QSizePolicy.Policy.Fixed)
+        self.bkg_label.setFrameShape(qtw.QFrame.Shape.Panel)
+        self.bkg_label.setFrameShadow(qtw.QFrame.Shadow.Sunken)
+        self.bkg_layout.addWidget(self.bkg_label)
+
+        self.bkg_scale_spinbox = gui_helper.SciSpinBox()
+        self.bkg_scale_spinbox.setMinimum(0)
+        self.bkg_scale_spinbox.setValue(1)
+        self.bkg_scale_spinbox.setToolTip('Scale your background to match dataset\n' \
+                                          '(View in "Plot input dataset")')
+        self.bkg_layout.addWidget(self.bkg_scale_spinbox)
+
+        self.get_bkg_button = qtw.QPushButton("Load background")
+        self.get_bkg_button.setSizePolicy(
+            qtw.QSizePolicy.Policy.Fixed,
+            qtw.QSizePolicy.Policy.Fixed
+        )
+        self.bkg_layout.addWidget(self.get_bkg_button)
+
+        self.bkg_checkbox.toggled.connect(
+            lambda value : (
+                self.bkg_label.show(),
+                self.bkg_scale_spinbox.show(),
+                self.get_bkg_button.show()
+            ) if value
+            else (
+                self.bkg_label.hide(),
+                self.bkg_scale_spinbox.hide(),
+                self.get_bkg_button.hide()
+            )
+        )
+
+        #########################
+        ##### Initial Guess #####
+        #########################
+        self.init_guess_checkbox = qtw.QCheckBox("Initial guess")
+        self.add_options_layout.addWidget(self.init_guess_checkbox,1,1)
+        self.init_guess_checkbox.setToolTip(
+            "Warm-start optimization by providing a folder containing\n"
+            "one or more component files and/or a CSV of one or more scores\n"
+            "Anything smaller than the guess will be filled by model's initialization method"
+            "(components must be of same length as scan files)"
+        )
+
+        self.init_guess_layout = qtw.QHBoxLayout()
+        self.init_guess_layout.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
+        self.input_files_layout.addLayout(self.init_guess_layout, 2,1)
+
+        self.init_guess_label = qtw.QLabel("Select a folder with initial guess at solution")
+        self.init_guess_label.setAlignment(qtc.Qt.AlignmentFlag.AlignRight)
+        self.init_guess_label.setMinimumWidth(350)
+        self.init_guess_label.setSizePolicy(
+            qtw.QSizePolicy.Policy.Preferred,
+            qtw.QSizePolicy.Policy.Fixed
+        )
+        self.init_guess_label.setFrameShape(qtw.QFrame.Shape.Panel)
+        self.init_guess_label.setFrameShadow(qtw.QFrame.Shadow.Sunken)
+        self.init_guess_layout.addWidget(self.init_guess_label)
+
+        self.get_init_guess_button = qtw.QPushButton("Load guess")
+        self.get_init_guess_button.setSizePolicy(
+            qtw.QSizePolicy.Policy.Fixed,
+            qtw.QSizePolicy.Policy.Fixed
+        )
+        self.init_guess_layout.addWidget(self.get_init_guess_button)
+
+        self.init_guess_checkbox.toggled.connect(
+            lambda value : (
+                self.init_guess_label.show(),
+                self.get_init_guess_button.show()
+            ) if value
+            else (
+                self.init_guess_label.hide(),
+                self.get_init_guess_button.hide()
+            )
+        )
 
         ####################################
         ##### Expanding Window Fitting #####
         ####################################
-        self.exp_win_label = qtw.QLabel("Expanding Window Fitting")
-        self.exp_win_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
-        self.exp_win_label.setSizePolicy(
-            qtw.QSizePolicy.Policy.Minimum,
-            qtw.QSizePolicy.Policy.Fixed
+        self.exp_win_checkbox = qtw.QCheckBox("Expanding Window")
+        self.exp_win_checkbox.setToolTip(
+            "Perform optimization for some/all components on an increasing number of samples\n"
+            "Set own window borders or use uniform distribution\n"
+            "(incompatible with \"Errors\")"
         )
-        self.exp_win_layout.addWidget(self.exp_win_label, 0,0,1,3)
-
-        self.exp_win_enable_checkbox = qtw.QCheckBox("Enable")
-        self.exp_win_enable_checkbox.setToolTip(
-            "Set own windows or use uniform distribution\n"
-            "(incompatible with \"Calculate errors\")"
-        )
-        self.exp_win_layout.addWidget(self.exp_win_enable_checkbox,1,0)
-
+        self.add_options_layout.addWidget(self.exp_win_checkbox,2,0)
 
         self.exp_win_custom_checkbox = qtw.QCheckBox("Custom")
-        self.exp_win_custom_checkbox.setDisabled(True)
         self.exp_win_custom_checkbox.setToolTip("Set own windows or use uniform distribution")
-        self.exp_win_layout.addWidget(self.exp_win_custom_checkbox,1,1)
+        self.add_options_layout.addWidget(self.exp_win_custom_checkbox,3,0)
 
-        # IF UNIFROM DISTRIBUTION
         self.exp_win_num_spinbox = qtw.QSpinBox()
         self.exp_win_num_spinbox.setMinimum(1)
         self.exp_win_num_spinbox.setDisabled(True)
         self.exp_win_num_spinbox.setToolTip("Number of windows for uniform distribution")
-        self.exp_win_layout.addWidget(self.exp_win_num_spinbox,1,2)
+        self.add_options_layout.addWidget(self.exp_win_num_spinbox,3,1)
+
+        self.exp_win_sublayout = qtw.QGridLayout()
+        self.add_options_layout.addLayout(self.exp_win_sublayout, 4,0,2,2)
 
         self.exp_win_comps_label = qtw.QLabel("Components")
-        self.exp_win_layout.addWidget(self.exp_win_comps_label,2,0)
+        self.exp_win_sublayout.addWidget(self.exp_win_comps_label, 0,0)
 
         self.exp_win_comps_line = qtw.QLineEdit()
-        self.exp_win_comps_line.setDisabled(True)
         self.exp_win_comps_line.setToolTip(
             "Enter how many components you'd like for each window separated by comma (,)\n"
             "(leave empty for all components from the start)"
         )
-        self.exp_win_layout.addWidget(self.exp_win_comps_line, 2,1,1,2)
+        self.exp_win_sublayout.addWidget(self.exp_win_comps_line, 0,1)
 
         self.exp_win_custom_label = qtw.QLabel("Windows")
-        self.exp_win_layout.addWidget(self.exp_win_custom_label,3,0)
+        self.exp_win_sublayout.addWidget(self.exp_win_custom_label, 1,0)
 
         self.exp_win_custom_line = qtw.QLineEdit()
         self.exp_win_custom_line.setDisabled(True)
         self.exp_win_custom_line.setToolTip("Enter window borders separated by comma (,)")
-        self.exp_win_layout.addWidget(self.exp_win_custom_line,3,1,1,2)
+        self.exp_win_sublayout.addWidget(self.exp_win_custom_line, 1,1)
 
-        self.exp_win_enable_checkbox.toggled.connect(
+        self.exp_win_checkbox.toggled.connect(
             lambda value: (
-                self.exp_win_custom_checkbox.setEnabled(value),
-                self.exp_win_comps_line.setEnabled(True),
+                self.exp_win_custom_checkbox.show(),
+                self.exp_win_num_spinbox.show(),
+                self.exp_win_comps_label.show(),
+                self.exp_win_comps_line.show(),
+                self.exp_win_custom_label.show(),
+                self.exp_win_custom_line.show(),
                 self.exp_win_custom_checkbox.toggled.emit(self.exp_win_custom_checkbox.isChecked())
             ) if value
             else (
-                self.exp_win_custom_checkbox.setEnabled(value),
-                self.exp_win_num_spinbox.setEnabled(value),
-                self.exp_win_comps_line.setEnabled(value),
-                self.exp_win_custom_line.setEnabled(value)
+                self.exp_win_custom_checkbox.hide(),
+                self.exp_win_num_spinbox.hide(),
+                self.exp_win_comps_label.hide(),
+                self.exp_win_comps_line.hide(),
+                self.exp_win_custom_label.hide(),
+                self.exp_win_custom_line.hide()
             )
         )
         self.exp_win_custom_checkbox.toggled.connect(
@@ -391,19 +438,25 @@ class MainWindow(qtw.QMainWindow):
         self.algorithm_layout.addWidget(self.ica_button, 1,2)
 
         self.snmf_button = qtw.QRadioButton("SNMF")
-        self.snmf_button.setToolTip("Stretched Non-Negative Matrix Factorization (diffpy)\n"
-                                   "WARNING: The SNMF algorithm takes a lot of time.")
+        self.snmf_button.setToolTip("Stretched Non-Negative Matrix Factorization (diffpy)")
         self.algorithm_layout.addWidget(self.snmf_button, 2,0)
-
-        self.calc_err_checkbox = qtw.QCheckBox("Calculate errors")
-        self.calc_err_checkbox.setChecked(True)
-        self.calc_err_checkbox.setToolTip("Calculates errors for 1 to 10 components")
-        self.algorithm_layout.addWidget(self.calc_err_checkbox, 2,1,1,2)
 
         self.algorithm_group.addButton(self.pca_button)
         self.algorithm_group.addButton(self.nmf_button)
         self.algorithm_group.addButton(self.ica_button)
         self.algorithm_group.addButton(self.snmf_button)
+
+        self.calc_err_checkbox = qtw.QCheckBox("Errors")
+        self.calc_err_checkbox.setChecked(True)
+        self.calc_err_checkbox.setToolTip(
+            "Calculates errors for 1 to 10 components "
+            "and shows the resulting scree plot"
+        )
+        self.algorithm_layout.addWidget(self.calc_err_checkbox, 2,1)
+
+        self.verbose_checkbox = qtw.QCheckBox("Verbose")
+        self.verbose_checkbox.setToolTip("Enables print statements during optimization")
+        self.algorithm_layout.addWidget(self.verbose_checkbox, 2,2)
 
         self.comp_num_layout = qtw.QGridLayout()
         self.grid.addLayout(self.comp_num_layout, 3,1)
@@ -441,6 +494,7 @@ class MainWindow(qtw.QMainWindow):
 
 
         self.algorithm_parameters_layout = qtw.QGridLayout()
+        self.algorithm_parameters_layout.setRowStretch(4,1)
         self.grid.addLayout(self.algorithm_parameters_layout, 4,1)
 
         self.algorithm_parameters_title = qtw.QLabel("Algorithm Parameters")
@@ -450,397 +504,10 @@ class MainWindow(qtw.QMainWindow):
         )
         self.algorithm_parameters_layout.addWidget(self.algorithm_parameters_title, 0,0, 1,3)
 
-        ##########################
-        ##### PCA parameters #####
-        ##########################
-        self.pca_whiten_checkbox = qtw.QCheckBox("Whiten")
-        self.algorithm_parameters_layout.addWidget(self.pca_whiten_checkbox, 1,0)
-        self.pca_whiten_checkbox.setToolTip("[whiten]\n" \
-        "Whitening will remove some information from the transformed signal\n" \
-        "(the relative variance scales of the components) but can sometime\n" \
-        "improve the predictive accuracy of the downstream estimators\n" \
-        "by making their data respect some hard-wired assumptions")
-
-        self.pca_solver_dropdown = qtw.QComboBox()
-        self.pca_solver_dropdown.addItems([
-            'auto',
-            'full',
-            'covariance_eigh',
-            'arpack',
-            'randomized'
-        ])
-        self.algorithm_parameters_layout.addWidget(self.pca_solver_dropdown, 1,1)
-        self.pca_solver_dropdown.setToolTip("[svd_solver]\n" \
-        "The type of Singular Value Decomposition solver to use:\n" \
-        "auto (default): Chooses solver based on size of dataset and number of components\n" \
-        "full: Runs exact full SVD\n" \
-        "covariance_eigh: Precomputes covarience for eigenvalue decompositon.\n" \
-        "\tEfficient for many scans of few datapoints (rare for scattering)\n" \
-        "arpack: Runs SVD truncated to number of components.\n" \
-        "\tRequires fewer components than number of scans\n" \
-        "randomized: Runs randomized SVD")
-
-        # Only for 'arpack' solver
-        self.pca_tol_spinbox = gui_helper.SciSpinBox()
-        self.pca_tol_spinbox.setMinimum(0)
-        self.pca_tol_spinbox.setValue(0)
-        self.algorithm_parameters_layout.addWidget(self.pca_tol_spinbox, 1,2)
-        self.pca_tol_spinbox.setToolTip("[tol]\n" \
-        "Tolerance for singular values using 'arpack'")
-        self.pca_solver_dropdown.currentTextChanged.connect(
-            lambda currentText: self.pca_tol_spinbox.show()
-            if currentText=='arpack'
-            else self.pca_tol_spinbox.hide()
-        )
-
-        # Only for 'randomized' solver
-        self.pca_iterated_power_spinbox = qtw.QSpinBox()
-        self.pca_iterated_power_spinbox.setMinimum(0)
-        self.pca_iterated_power_spinbox.setMaximum(999999)
-        self.pca_iterated_power_spinbox.setValue(0)
-        self.pca_iterated_power_spinbox.setSingleStep(100)
-        self.algorithm_parameters_layout.addWidget(self.pca_iterated_power_spinbox, 2,0)
-        self.pca_iterated_power_spinbox.setToolTip("[iterated_power]\n" \
-        "Number of iterations for the power method in 'randomized'")
-        self.pca_solver_dropdown.currentTextChanged.connect(
-            lambda currentText: self.pca_iterated_power_spinbox.show()
-            if currentText=='randomized'
-            else self.pca_iterated_power_spinbox.hide()
-        )
-
-        # Only for 'randomized' solver
-        self.pca_iterated_power_auto_checkbox = qtw.QCheckBox("auto")
-        self.algorithm_parameters_layout.addWidget(self.pca_iterated_power_auto_checkbox, 2,1)
-        self.pca_iterated_power_auto_checkbox.setToolTip("[iterated_power]\n" \
-        "Automatically choose number of iterations")
-        self.pca_iterated_power_auto_checkbox.clicked.connect(
-            lambda state: self.pca_iterated_power_spinbox.setDisabled(True)
-            if state
-            else self.pca_iterated_power_spinbox.setDisabled(False)
-        )
-        self.pca_solver_dropdown.currentTextChanged.connect(
-            lambda currentText: self.pca_iterated_power_auto_checkbox.show()
-            if currentText=='randomized'
-            else self.pca_iterated_power_auto_checkbox.hide()
-        )
-
-        # Only for 'randomized' solver
-        self.pca_n_oversampled_spinbox = qtw.QSpinBox()
-        self.pca_n_oversampled_spinbox.setMinimum(0)
-        self.pca_n_oversampled_spinbox.setMaximum(50)
-        self.pca_n_oversampled_spinbox.setValue(10)
-        self.pca_n_oversampled_spinbox.setSingleStep(1)
-        self.algorithm_parameters_layout.addWidget(self.pca_n_oversampled_spinbox, 2,2)
-        self.pca_n_oversampled_spinbox.setToolTip("[n_oversamples]\n" \
-        "Additional number of random vectors to sample using 'randomized'")
-        self.pca_solver_dropdown.currentTextChanged.connect(
-            lambda currentText: self.pca_n_oversampled_spinbox.show()
-            if currentText=='randomized'
-            else self.pca_n_oversampled_spinbox.hide()
-        )
-
-        # Only for 'randomized' solver // Not for 'arpack' solver
-        self.pca_power_iteration_normalizer_dropdown = qtw.QComboBox()
-        self.pca_power_iteration_normalizer_dropdown.addItems(['auto', 'QR', 'LU', 'none'])
-        self.algorithm_parameters_layout.addWidget(self.pca_power_iteration_normalizer_dropdown,1,2)
-        self.pca_power_iteration_normalizer_dropdown.setToolTip("[power_iteration_normalizer]\n" \
-        "Power iteration normalizer using 'randomized'")
-        self.pca_solver_dropdown.currentTextChanged.connect(
-            lambda currentText: self.pca_power_iteration_normalizer_dropdown.show()
-            if currentText=='randomized'
-            else self.pca_power_iteration_normalizer_dropdown.hide()
-        )
-
-        # Ignored PCA parameters:
-        # random_state
-
-        self.pca_algorithm_widgets = [
-            self.pca_whiten_checkbox, self.pca_solver_dropdown,
-            self.pca_tol_spinbox, self.pca_iterated_power_spinbox,
-            self.pca_iterated_power_auto_checkbox, self.pca_n_oversampled_spinbox,
-            self.pca_n_oversampled_spinbox, self.pca_power_iteration_normalizer_dropdown
-        ]
-
-        ##########################
-        ##### NMF parameters #####
-        ##########################
-        self.nmf_init_dropdown = qtw.QComboBox()
-        self.nmf_init_dropdown.addItems(["nndsvda", "random", "nndsvd", "nndsvdar"])
-        self.algorithm_parameters_layout.addWidget(self.nmf_init_dropdown, 1,0)
-        self.nmf_init_dropdown.setToolTip("[init]\n" \
-        "Method used to initialize the procedure:\n" \
-        "('nndsvda' is recommended for PDF and 'nndsvd' is recommended for XRD)\n" \
-        "nndsvda (default): Better when sparsity is not desired (PDF)\n" \
-        "random: Random non-negative matrices\n" \
-        "nndsvd: Non-negative Double Singular Value Decomposition (better for sparseness) (XRD)\n" \
-        "nndsvdar: Faster, less accurate alternative to NNDSVDa when sparsity is not desired")
-
-        self.nmf_solver_dropdown = qtw.QComboBox()
-        self.nmf_solver_dropdown.addItems(["cd", "mu"])
-        self.algorithm_parameters_layout.addWidget(self.nmf_solver_dropdown, 1,1)
-        self.nmf_solver_dropdown.setToolTip("[solver]\n" \
-        "Numerical solver to use:\n" \
-        "cd (default): Coordinate Descent\n" \
-        "mu: Multiplicative Update\n" \
-        "('mu' gives poor results with 'nndsvd' as it cannot update zeros in initialization)")
-
-        self.nmf_max_iter_spinbox = qtw.QSpinBox()
-        self.nmf_max_iter_spinbox.setMinimum(1)
-        self.nmf_max_iter_spinbox.setMaximum(999999)
-        self.nmf_max_iter_spinbox.setValue(2500)
-        self.algorithm_parameters_layout.addWidget(self.nmf_max_iter_spinbox, 2,0)
-        self.nmf_max_iter_spinbox.setToolTip("[max_iter]\n" \
-        "Maximum number of iterations before timing out")
-
-        self.nmf_tol_spinbox = gui_helper.SciSpinBox()
-        self.nmf_tol_spinbox.setMinimum(0)
-        self.nmf_tol_spinbox.setValue(1e-4)
-        self.algorithm_parameters_layout.addWidget(self.nmf_tol_spinbox, 2,1)
-        self.nmf_tol_spinbox.setToolTip("[tol]\n" \
-        "Tolerance of the stopping condition")
-
-        # Used in 'cd' solver
-        self.nmf_l1_ratio_spinbox = qtw.QDoubleSpinBox()
-        self.nmf_l1_ratio_spinbox.setMinimum(0)
-        self.nmf_l1_ratio_spinbox.setMaximum(1)
-        self.nmf_l1_ratio_spinbox.setValue(0)
-        self.nmf_l1_ratio_spinbox.setSingleStep(0.05)
-        self.algorithm_parameters_layout.addWidget(self.nmf_l1_ratio_spinbox, 1,2)
-        self.nmf_l1_ratio_spinbox.setToolTip("[l1_ratio]\n" \
-        "Regularization mixing parameter:\n" \
-        "(0, default): elementwise L2 penalty aka. Frobenius Norm\n"
-        "(1): elementwwise L1 penalty (better for sparseness)\n")
-        self.nmf_solver_dropdown.currentTextChanged.connect(
-            lambda currentText: self.nmf_l1_ratio_spinbox.show()
-            if currentText=='cd'
-            else self.nmf_l1_ratio_spinbox.hide()
-        )
-
-        # Only for 'mu' solver
-        self.nmf_beta_loss_dropdown = qtw.QComboBox()
-        # "itakura-saito" not included. Cannot have zeros, which XRD/PDF often has
-        self.nmf_beta_loss_dropdown.addItems(["frobenius", "kullback-leibler"])
-        self.algorithm_parameters_layout.addWidget(self.nmf_beta_loss_dropdown, 1,2)
-        self.nmf_beta_loss_dropdown.setToolTip("[beta_loss]\n" \
-        "Beta divergence to be minimized," \
-        "measuring the distance between X and the dot product WH using 'mu':\n" \
-        "frobenius is default")
-        self.nmf_solver_dropdown.currentTextChanged.connect(
-            lambda currentText: self.nmf_beta_loss_dropdown.show()
-            if currentText=='mu'
-            else self.nmf_beta_loss_dropdown.hide()
-        )
-
-        self.nmf_alpha_w_spinbox = qtw.QDoubleSpinBox()
-        self.nmf_alpha_w_spinbox.setMinimum(0)
-        self.nmf_alpha_w_spinbox.setMaximum(10)
-        self.nmf_alpha_w_spinbox.setValue(0)
-        self.nmf_alpha_w_spinbox.setDecimals(5)
-        self.nmf_alpha_w_spinbox.setSingleStep(0.00005)
-        self.algorithm_parameters_layout.addWidget(self.nmf_alpha_w_spinbox, 3,0)
-        self.nmf_alpha_w_spinbox.setToolTip(
-            "[alpha_W]\n"
-            "Constant that multiplies the regularization terms of the mixing of features:\n"
-            "(Regularization is a penalty term to constrain parameter"
-            "complexity and reduce overfitting)\n"
-            "0 (default) means no regularization"
-        )
-
-        self.nmf_alpha_h_spinbox = qtw.QDoubleSpinBox()
-        self.nmf_alpha_h_spinbox.setMinimum(0)
-        self.nmf_alpha_h_spinbox.setMaximum(10)
-        self.nmf_alpha_h_spinbox.setValue(0)
-        self.nmf_alpha_h_spinbox.setDecimals(5)
-        self.nmf_alpha_h_spinbox.setSingleStep(0.00005)
-        self.nmf_alpha_h_spinbox.setDisabled(True)
-        self.algorithm_parameters_layout.addWidget(self.nmf_alpha_h_spinbox, 3,1)
-        self.nmf_alpha_h_spinbox.setToolTip("[alpha_H]\n" \
-        "Constant that multiplies the regularization terms of the features:\n" \
-        "0 means no regularization. By default same as alpha_W ")
-
-        self.nmf_alpha_h_same_checkbox = qtw.QCheckBox("same")
-        self.nmf_alpha_h_same_checkbox.setChecked(True)
-        self.algorithm_parameters_layout.addWidget(self.nmf_alpha_h_same_checkbox, 3,2)
-        self.nmf_alpha_h_same_checkbox.setToolTip("[alpha_H]\n" \
-        "Use same regularization constant for features and mixing")
-        self.nmf_alpha_h_same_checkbox.clicked.connect(
-            lambda state: self.nmf_alpha_h_spinbox.setDisabled(True)
-            if state
-            else self.nmf_alpha_h_spinbox.setDisabled(False)
-        )
-        self.nmf_alpha_h_same_checkbox.clicked.connect(
-            lambda state: self.nmf_alpha_h_spinbox.setValue(self.nmf_alpha_w_spinbox.value())
-            if state
-            else None
-        )
-        self.nmf_alpha_w_spinbox.valueChanged.connect(
-            lambda value: self.nmf_alpha_h_spinbox.setValue(value)
-            if self.nmf_alpha_h_same_checkbox.isChecked()
-            else None
-        )
-
-        self.nmf_rescale_checkbox = qtw.QCheckBox("Rescale")
-        self.algorithm_parameters_layout.addWidget(self.nmf_rescale_checkbox, 2,2)
-        self.nmf_rescale_checkbox.setToolTip("Rescales scores to sum to 1")
-
-
-        # Ignored NMF parmeters:
-        # random_state
-        # verbose
-        # shuffle
-
-        self.nmf_algorithm_widgets = [
-            self.nmf_init_dropdown, self.nmf_solver_dropdown,
-            self.nmf_max_iter_spinbox, self.nmf_tol_spinbox,
-            self.nmf_l1_ratio_spinbox, self.nmf_beta_loss_dropdown,
-            self.nmf_alpha_w_spinbox, self.nmf_alpha_h_spinbox,
-            self.nmf_alpha_h_same_checkbox, self.nmf_rescale_checkbox
-        ]
-
-        ##########################
-        ##### ICA parameters #####
-        ##########################
-        self.ica_algorithm_dropdown = qtw.QComboBox()
-        self.ica_algorithm_dropdown.addItems(['parallel', 'deflation'])
-        self.algorithm_parameters_layout.addWidget(self.ica_algorithm_dropdown, 1,0)
-        self.ica_algorithm_dropdown.setToolTip("[algorithm]\n" \
-        "Specify which algorithm to use:\n" \
-        "parallel is default")
-
-        self.ica_whiten_dropdown = qtw.QComboBox()
-        self.ica_whiten_dropdown.addItems(['unit-variance', 'arbitrary-variance', 'False'])
-        self.algorithm_parameters_layout.addWidget(self.ica_whiten_dropdown, 1,1)
-        self.ica_whiten_dropdown.setToolTip(
-            "[whiten]\n"
-            "Whitening strategy to use. False means no whitening:\n"
-            "unit-variance (default): the whitening matrix is rescaled"
-            "to ensure each recovered source has unit variance\n"
-            "arbitrary-variance: a whitening with variance arbitrary is used\n"
-            "False: Data is considered whitened and no whitening is performed"
-        )
-
-        self.ica_max_iter_spinbox = qtw.QSpinBox()
-        self.ica_max_iter_spinbox.setMinimum(1)
-        self.ica_max_iter_spinbox.setMaximum(999999)
-        self.ica_max_iter_spinbox.setValue(2500)
-        self.algorithm_parameters_layout.addWidget(self.ica_max_iter_spinbox, 2,0)
-        self.ica_max_iter_spinbox.setToolTip("[max_iter]\n" \
-        "Maximum number of iterations during fit")
-
-        self.ica_tol_spinbox = gui_helper.SciSpinBox()
-        self.ica_tol_spinbox.setMinimum(0)
-        self.ica_tol_spinbox.setValue(1e-4)
-        self.algorithm_parameters_layout.addWidget(self.ica_tol_spinbox, 2,1)
-        self.ica_tol_spinbox.setToolTip(
-            "[tol]\n"
-            "A positive scalar giving the tolerance"
-            "at which the un-mixing matrix is considered to have converged"
-        )
-
-        self.ica_fun_dropdown = qtw.QComboBox()
-        self.ica_fun_dropdown.addItems(['logcosh', 'exp', 'cube'])
-        self.algorithm_parameters_layout.addWidget(self.ica_fun_dropdown, 1,2)
-        self.ica_fun_dropdown.setToolTip(
-            "[fun]\n"
-            "The functional form of the G function used in the approximation to neg-entropy:\n"
-            "logcosh is default"
-            )
-
-        self.ica_whiten_solver_dropdown = qtw.QComboBox()
-        self.ica_whiten_solver_dropdown.addItems(['svd', 'eigh'])
-        self.algorithm_parameters_layout.addWidget(self.ica_whiten_solver_dropdown, 2,2)
-        self.ica_whiten_solver_dropdown.setToolTip(
-            "[whiten_solver]\n"
-            "The solver to use for whitening:\n"
-            "svd (default): More numerically stable if the problem is degenerate,"
-            "and often faster for scattering\n"
-            "eigh: More memory efficient when there are more scans than datapoints"
-            "(rare in scattering)"
-        )
-
-        # Ignored ICA parameters:
-        # fun_args
-        # w_init
-        # random_state
-
-        self.ica_algorithm_widgets = [
-            self.ica_algorithm_dropdown,
-            self.ica_whiten_dropdown,
-            self.ica_max_iter_spinbox,
-            self.ica_tol_spinbox,
-            self.ica_fun_dropdown,
-            self.ica_whiten_solver_dropdown
-        ]
-
-        ###########################
-        ##### SNMF parameters #####
-        ###########################
-        self.snmf_min_iter_spinbox = qtw.QSpinBox()
-        self.snmf_min_iter_spinbox.setMinimum(0)
-        self.snmf_min_iter_spinbox.setMaximum(999999)
-        self.snmf_min_iter_spinbox.setValue(20)
-        self.algorithm_parameters_layout.addWidget(self.snmf_min_iter_spinbox, 2,0)
-        self.snmf_min_iter_spinbox.setToolTip("[min_iter]\n" \
-        "Minimum number of iterations before terminating optimzation")
-
-        self.snmf_max_iter_spinbox = qtw.QSpinBox()
-        self.snmf_max_iter_spinbox.setMinimum(1)
-        self.snmf_max_iter_spinbox.setMaximum(999999)
-        self.snmf_max_iter_spinbox.setValue(500)
-        self.algorithm_parameters_layout.addWidget(self.snmf_max_iter_spinbox, 2,1)
-        self.snmf_max_iter_spinbox.setToolTip("[max_iter]\n" \
-        "Maximum number of iterations before terminating optimzation")
-
-        self.snmf_tol_spinbox = gui_helper.SciSpinBox()
-        self.snmf_tol_spinbox.setMinimum(0)
-        self.snmf_tol_spinbox.setValue(5e-07)
-        self.algorithm_parameters_layout.addWidget(self.snmf_tol_spinbox, 2,2)
-        self.snmf_tol_spinbox.setToolTip("[tol]\n" \
-        "Convergence threshold.\n" \
-        "Minimum fractional improvment to allow terminating optimization")
-
-        self.snmf_rho_spinbox = gui_helper.SciSpinBox()
-        self.snmf_rho_spinbox.setMinimum(0)
-        self.snmf_rho_spinbox.setValue(0)
-        self.snmf_rho_spinbox.setDecimals(0)
-        #self.SNMFrho_Spinbox.setMaximum(10000000000)
-        #self.SNMFrho_Spinbox.setSingleStep(1)
-        self.algorithm_parameters_layout.addWidget(self.snmf_rho_spinbox, 3,0)
-        self.snmf_rho_spinbox.setToolTip(
-                "[rho]\n"
-            "Stretching factor // Stretching regularization hyperparameter."
-            "Controls stretching pentalty. \n"
-            "Typically adjusted in powers of 10.\n"
-            "Zero (default) corresponds to no stretching"
-            )
-
-        self.snmf_eta_spinbox = qtw.QDoubleSpinBox()
-        self.snmf_eta_spinbox.setMinimum(0)
-        self.snmf_eta_spinbox.setValue(0)
-        self.snmf_eta_spinbox.setDecimals(5)
-        #self.SNMFeta_DSpinbox.setMaximum(10)
-        #self.SNMFeta_DSpinbox.setSingleStep(0.00005)
-        self.algorithm_parameters_layout.addWidget(self.snmf_eta_spinbox, 3,1)
-        self.snmf_eta_spinbox.setToolTip(
-            "[eta]\n"
-            "Sparsity factor. Should be set to zero (default) for non-sparse data such as PDF.\n"
-            "Can be used to improve results for sparse data such as XRD,\n"
-            "but due to instability should be used only faster selecting the best value for rho.\n"
-            "Suggested adjustment is by powers of 2"
-        )
-
-        # Ignored SNMF parmeters:
-        # random_state
-        # verbose
-        # show_plots
-
-        self.snmf_algorithm_widgets = [
-            self.snmf_min_iter_spinbox,
-            self.snmf_max_iter_spinbox,
-            self.snmf_tol_spinbox,
-            self.snmf_rho_spinbox,
-            self.snmf_eta_spinbox
-        ]
+        gui_algorithms.init_pca_algorithm_widgets(self)
+        gui_algorithms.init_nmf_algorithm_widgets(self)
+        gui_algorithms.init_ica_algorithm_widgets(self)
+        gui_algorithms.init_snmf_algorithm_widgets(self)
 
         #####################################
         ##### Analysis and plot widgets #####
@@ -901,14 +568,28 @@ class MainWindow(qtw.QMainWindow):
             else None
         )
 
+        self.display_layout = qtw.QGridLayout()
+        self.grid.addLayout(self.display_layout, 4,2)
+
+        self.display_label = qtw.QLabel("Display")
+        self.display_label.setAlignment(qtc.Qt.AlignmentFlag.AlignCenter)
+        self.display_label.setSizePolicy(qtw.QSizePolicy.Policy.Minimum,
+                                         qtw.QSizePolicy.Policy.Fixed
+        )
+        self.display_layout.addWidget(self.display_label, 0,0,1,2)
+
+        self.display_recon_label = qtw.QLabel("Reconstruct Scans")
+        self.display_layout.addWidget(self.display_recon_label, 1,0)
+
         self.display_recon_line = qtw.QLineEdit()
         self.display_recon_line.setToolTip(
             "Enter scan numbers to display reconstruction of separated by comma (,)\n"
             "(empty or missing scans: fills with uniform distribution)"
         )
-        self.results_layout.addWidget(self.display_recon_line, 2,0,1,2)
+        self.display_layout.addWidget(self.display_recon_line, 1,1)
+        self.display_layout.setRowStretch(2,1)
 
-        self.grid.setColumnStretch(3,1)
+        self.grid.setColumnStretch(1,1)
         self.grid.setRowStretch(5,1)
 
         ########################
@@ -983,7 +664,10 @@ class MainWindow(qtw.QMainWindow):
         if os.path.exists(self.configfile):
             self.read_config_file()
 
-        self.display_algorithm_widgets()
+        gui_algorithms.display_algorithm_widgets(self)
+        self.bkg_checkbox.toggled.emit(self.bkg_checkbox.isChecked())
+        self.init_guess_checkbox.toggled.emit(self.init_guess_checkbox.isChecked())
+        self.exp_win_checkbox.toggled.emit(self.exp_win_checkbox.isChecked())
 
         ################################
         ##### Function connections #####
@@ -993,16 +677,8 @@ class MainWindow(qtw.QMainWindow):
         self.get_bkg_button.clicked.connect(self.set_bkgfile)
         self.get_bkg_button.clicked.connect(self.update_config_file)
         self.bkg_scale_spinbox.valueChanged.connect(self.update_config_file)
-        self.rm_bkg_button.clicked.connect(
-            lambda: self.bkg_label.setText("Select a background for subtraction")
-        )
-        self.rm_bkg_button.clicked.connect(self.update_config_file)
         self.get_init_guess_button.clicked.connect(self.set_guessdir)
         self.get_init_guess_button.clicked.connect(self.update_config_file)
-        self.rm_guess_button.clicked.connect(
-            lambda: self.init_guess_label.setText("Select a folder with initial guess at solution")
-        )
-        self.rm_guess_button.clicked.connect(self.update_config_file)
         self.input_format_group.buttonClicked.connect(self.update_config_file)
         self.input_format_group.buttonClicked.connect(self.set_widget_limits)
         self.convert_to_q_checkbox.clicked.connect(self.update_config_file)
@@ -1016,7 +692,9 @@ class MainWindow(qtw.QMainWindow):
         self.scanmax_spinbox.valueChanged.connect(self.update_config_file)
         self.limit_scans_checkbox.toggled.connect(self.update_config_file)
         self.plot_data_button.clicked.connect(self.plot_dataset)
-        self.algorithm_group.buttonClicked.connect(self.display_algorithm_widgets)
+        self.algorithm_group.buttonClicked.connect(
+            lambda: gui_algorithms.display_algorithm_widgets(self)
+        )
         self.algorithm_group.buttonClicked.connect(self.update_config_file)
         self.calc_err_checkbox.clicked.connect(self.update_config_file)
         self.comp_num_slider.valueChanged.connect(
@@ -1042,57 +720,6 @@ class MainWindow(qtw.QMainWindow):
             self.about_window.close()
             self.about_window = None
 
-    def display_algorithm_widgets(self):
-        """
-        Shows/hides widgets based on chosen algorithm
-        """
-        for widget in (self.pca_algorithm_widgets +
-                       self.nmf_algorithm_widgets +
-                       self.ica_algorithm_widgets +
-                       self.snmf_algorithm_widgets):
-            widget.hide()
-
-        self.calc_err_checkbox.setChecked(False)
-        self.calc_err_checkbox.setEnabled(False)
-        self.exp_win_enable_checkbox.setChecked(False)
-        self.exp_win_enable_checkbox.setEnabled(False)
-        self.rm_guess_button.setEnabled(False)
-        self.init_guess_label.setEnabled(False)
-        self.get_init_guess_button.setEnabled(False)
-
-        match self.algorithm_group.checkedButton().text():
-            case "PCA":
-                self.pca_whiten_checkbox.show()
-                self.pca_solver_dropdown.show()
-                if self.pca_solver_dropdown.currentText()=='arpack':
-                    self.pca_tol_spinbox.show()
-                elif self.pca_solver_dropdown.currentText()=='randomized':
-                    self.pca_iterated_power_auto_checkbox.show()
-                    self.pca_iterated_power_spinbox.show()
-                    self.pca_n_oversampled_spinbox.show()
-                    self.pca_power_iteration_normalizer_dropdown.show()
-            case "NMF":
-                self.calc_err_checkbox.setEnabled(True)
-                self.exp_win_enable_checkbox.setEnabled(True)
-                self.rm_guess_button.setEnabled(True)
-                self.init_guess_label.setEnabled(True)
-                self.get_init_guess_button.setEnabled(True)
-                for widget in self.nmf_algorithm_widgets:
-                    widget.show()
-                if self.nmf_solver_dropdown.currentText()=='mu':
-                    self.nmf_l1_ratio_spinbox.hide()
-                    self.nmf_beta_loss_dropdown.show()
-                elif self.nmf_solver_dropdown.currentText()=='cd':
-                    self.nmf_beta_loss_dropdown.hide()
-                    self.nmf_l1_ratio_spinbox.show()
-            case "ICA":
-                for widget in self.ica_algorithm_widgets:
-                    widget.show()
-            case "SNMF":
-                self.calc_err_checkbox.setEnabled(True)
-                for widget in self.snmf_algorithm_widgets:
-                    widget.show()
-
     def set_datadir(self, indir=None):
         """
         Sets the dataset directory and gets details for widget behavior
@@ -1114,9 +741,9 @@ class MainWindow(qtw.QMainWindow):
             qtw.QMessageBox.critical(
                 self,
                 "Dataset",
-                "Could not import dataset.\n\n"
-                "Ensure directory and files exist and are in the correct format."
-                f"Details:\n{type(e).__name__}: {e}\n\n"
+                "Could not import dataset.\n"
+                "Ensure directory and files exist and are in the correct format.\n\n"
+                f"Details:\n{type(e).__name__}: {e}"
             )
             return
 
@@ -1134,7 +761,6 @@ class MainWindow(qtw.QMainWindow):
         """
         Sets the background file, tests its validity and imports it
         """
-        print(f"Importing background from {infile}")
         if not infile: # Both "None" and "False" pass as False
             if self.bkg_label.text() == "Select a background for subtraction":
                 infile,_ = qtw.QFileDialog.getOpenFileName(
@@ -1156,9 +782,9 @@ class MainWindow(qtw.QMainWindow):
             qtw.QMessageBox.critical(
                 self,
                 "Background",
-                "Could not import background.\n\n"
-                "Ensure file exists and is in the correct format."
-                f"Details:\n{type(e).__name__}: {e}\n\n"
+                "Could not import background.\n"
+                "Ensure file exists and is in the correct format.\n\n"
+                f"Details:\n{type(e).__name__}: {e}"
             )
         else:
             self.bkg_label.setText(infile)
@@ -1168,7 +794,6 @@ class MainWindow(qtw.QMainWindow):
                 action_func=self.set_bkgfile,
                 update_func=self.update_config_file
             )
-            print("Background imported\n")
 
     def set_guessdir(self, indir=None):
         """
@@ -1396,25 +1021,25 @@ class MainWindow(qtw.QMainWindow):
                 qtw.QMessageBox.critical(
                     self,
                     "Dataset",
-                    "Could not import dataset.\n\n"
-                    "Ensure directory and files exist and are in the correct format."
-                    f"Details:\n{type(e).__name__}: {e}\n\n"
+                    "Could not import dataset.\n"
+                    "Ensure directory and files exist and are in the correct format.\n\n"
+                    f"Details:\n{type(e).__name__}: {e}"
                 )
                 return None
 
         angles = self.angles.copy()
         intensities = self.intensities.copy()
 
-        if self.bkg_label.text() != "Select a background for subtraction":
+        if self.bkg_checkbox.isChecked():
             try:
                 _, bkgintensity = file_worker.import_data(self.bkg_label.text())
             except (FileNotFoundError, ValueError, IOError) as e:
                 qtw.QMessageBox.critical(
                     self,
                     "Background",
-                    "Could not import background.\n\n"
-                    "Ensure file exists and is in the correct format."
-                    f"Details:\n{type(e).__name__}: {e}\n\n"
+                    "Could not import background.\n"
+                    "Ensure file exists and is in the correct format.\n\n"
+                    f"Details:\n{type(e).__name__}: {e}"
                 )
                 return None
             try:
@@ -1423,9 +1048,9 @@ class MainWindow(qtw.QMainWindow):
                 qtw.QMessageBox.critical(
                     self,
                     "Background subtraction",
-                    "Could not perform background subtraction.\n\n"
-                    "Ensure dataset and background are equally long or remove background."
-                    f"Details:\n{type(e).__name__}: {e}\n\n"
+                    "Could not perform background subtraction.\n"
+                    "Ensure dataset and background are equally long or remove background.\n\n"
+                    f"Details:\n{type(e).__name__}: {e}"
                 )
                 return None
 
@@ -1519,10 +1144,7 @@ class MainWindow(qtw.QMainWindow):
 
         init_components = None
         init_scores = None
-        if (
-            self.algorithm_group.checkedButton().text()=="NMF"
-            and self.init_guess_label.text() != "Select a folder with initial guess at solution"
-        ):
+        if self.init_guess_checkbox.isChecked():
             try:
                 init_components, init_scores = file_worker.import_init_guess(
                     self.init_guess_label.text()
@@ -1530,7 +1152,7 @@ class MainWindow(qtw.QMainWindow):
                 if (
                     init_scores is not None
                     and init_scores.shape[1] != intensities.shape[1]
-                ): # Expand features
+                ):
                     raise ValueError(
                         f"Expected {intensities.shape[1]} data points in guessed components, "
                         f"but got {init_scores.shape[1]}"
@@ -1539,9 +1161,9 @@ class MainWindow(qtw.QMainWindow):
                 qtw.QMessageBox.critical(
                     self,
                     "Initial guess",
-                    "Could not import initial guess.\n\n"
-                    "Ensure directory and files exist and are in the correct formats.\n"
-                    f"Details:\n{type(e).__name__}: {e}\n\n"
+                    "Could not import initial guess.\n"
+                    "Ensure directory and files exist and are in the correct formats.\n\n"
+                    f"Details:\n{type(e).__name__}: {e}"
                 )
                 return
 
@@ -1557,7 +1179,7 @@ class MainWindow(qtw.QMainWindow):
 
         print("Beginning analysis")
         errors = None
-        lift_factor = None
+        lift_factor = 0
         stretch = None
         match self.algorithm_group.checkedButton().text():
             case "PCA":
@@ -1600,7 +1222,7 @@ class MainWindow(qtw.QMainWindow):
                     calc_err=self.calc_err_checkbox.isChecked(),
                     rescale=self.nmf_rescale_checkbox.isChecked(),
                     exp_win={
-                        'enable': self.exp_win_enable_checkbox.isChecked(),
+                        'enable': self.exp_win_checkbox.isChecked(),
                         'do_custom': self.exp_win_custom_checkbox.isChecked(),
                         'num_win': self.exp_win_num_spinbox.value(),
                         'comps': np.fromstring(
@@ -1629,7 +1251,8 @@ class MainWindow(qtw.QMainWindow):
                             != "Select a folder with initial guess at solution"
                         )
                         else None
-                    )
+                    ),
+                    verbose=(1 if self.verbose_checkbox.isChecked() else 0)
                 )
             case "ICA":
                 fitted, transformed, reconstructed = analysis.ICA_analysis(
@@ -1655,27 +1278,38 @@ class MainWindow(qtw.QMainWindow):
                     tol=self.snmf_tol_spinbox.value(),
                     rho=self.snmf_rho_spinbox.value(),
                     eta=self.snmf_eta_spinbox.value(),
-                    calc_err=self.calc_err_checkbox.isChecked()
+                    calc_err=self.calc_err_checkbox.isChecked(),
+                    verbose=self.verbose_checkbox.isChecked()
                 )
 
         print("Analysis completed\n")
-        self.plot_analysis(
+
+        fig = self.plot_analysis(
             angles,
             intensities,
             fitted,
             transformed,
             reconstructed,
             comp_num=self.comp_num_slider.value(),
-            errors=errors,
-            lift_factor=lift_factor,
-            stretch=stretch
+            errors=errors
         )
+
+        if self.export_results_checkbox.isChecked():
+            self.export_results(
+                angles,
+                intensities,
+                fitted,
+                transformed,
+                reconstructed,
+                fig=fig,
+                errors=errors,
+                lift_factor=lift_factor,
+                stretch=stretch
+            )
 
     def plot_analysis(self, angles, intensities, fitted, transformed, reconstructed, *,
                       comp_num,
-                      errors=None,
-                      lift_factor=None,
-                      stretch=None
+                      errors=None
     ):
         """
         Plots analysis results
@@ -1685,12 +1319,13 @@ class MainWindow(qtw.QMainWindow):
         else:
             xlabel = self.input_format_group.checkedButton().text()
 
-        recon_num = np.zeros(self.comp_num_slider.value(), dtype=int)
+        recon_num = np.zeros(comp_num, dtype=int)
         user_recons = np.fromstring(self.display_recon_line.text(), dtype=int, sep=',')
         recon_num[:len(user_recons)] = user_recons
         if (recon_num == 0).any():
-            uniform_recons = np.linspace(0, len(reconstructed)-1, comp_num, dtype=int)
+            uniform_recons = np.linspace(1, len(reconstructed), comp_num, dtype=int)
             recon_num[len(user_recons):] = uniform_recons[len(user_recons):]
+        recon_num -= 1 # Account for inputting/showing scans counting from 1
 
         cmap = plt.get_cmap('inferno')
         colors = cmap(np.linspace(0, 0.8, comp_num))
@@ -1711,8 +1346,10 @@ class MainWindow(qtw.QMainWindow):
             ax_comp.set_title(f"Component {i+1}")
             ax_comp.set_xlabel(xlabel)
             ax_comp.set_xlim(np.min(angles[i]), np.max(angles[i]))
-            ax_comp.set_ylim(min(fitted.components_[i]) - max(fitted.components_[i])*0.05,
-                             max(fitted.components_[i])*1.05
+            padding = 0.05*(max(fitted.components_[i]) - min(fitted.components_[i]))
+            ax_comp.set_ylim(
+                min(fitted.components_[i]) - padding,
+                max(fitted.components_[i]) + padding
             )
 
             difference = intensities[recon_num[i]]-reconstructed[recon_num[i]]
@@ -1761,7 +1398,7 @@ class MainWindow(qtw.QMainWindow):
             ax_scores.axvline(recon+1, color="k", linestyle=":", label=("Recons" if i==0 else ''))
 
         # Plot windows if expanding windows are used
-        if self.exp_win_enable_checkbox.isChecked():
+        if self.exp_win_checkbox.isChecked():
             if self.exp_win_custom_checkbox.isChecked():
                 win_ends = np.fromstring(
                     self.exp_win_custom_line.text(),
@@ -1790,7 +1427,7 @@ class MainWindow(qtw.QMainWindow):
             and self.algorithm_group.checkedButton().text()=="NMF"
         ):
             ax_scores.set_title("Normalized Scores")
-            ax_scores.set_ylim(-0.01, 1.01)
+            ax_scores.set_ylim(0, 1)
         else:
             ax_scores.set_title("Scores")
             ax_scores.set_ylim(min(0,np.min(transformed)), np.max(transformed))
@@ -1808,14 +1445,10 @@ class MainWindow(qtw.QMainWindow):
             case "ICA":
                 pass
             case "SNMF":
-                # pylint: disable=unnecessary-pass,pointless-string-statement
-                pass
-                """
-                ax_errors.plot(np.arange(1, min(10,*np.shape(intensities))+1), errors, "ko--")
-                ax_errors.set_title("Reconstruction error (Not Implemented)")
-                axs[2][2].plot(np.arange(1, min(10,*np.shape(intensities))+1, stretch, "ko--"))
-                axs[2][2].set_title("Stretching")
-                """
+                if errors is not None:
+                    ax_errors.plot(np.arange(1, min(10,*np.shape(intensities))+1), errors, "ko--")
+                    ax_errors.set_title("Reconstruction error")
+
         ax_errors.set_xlim(0.9, 10.1)
 
         ax_errors.set_xlabel("# of Components")
@@ -1844,20 +1477,9 @@ class MainWindow(qtw.QMainWindow):
 
         fig.show()
 
-        if self.export_results_checkbox.isChecked():
-            self.export_results(
-                angles,
-                intensities,
-                fitted,
-                transformed,
-                reconstructed,
-                fig=fig,
-                errors=errors,
-                lift_factor=lift_factor,
-                stretch=stretch
-            )
+        return fig
 
-    def write_summary(self, results_path, errors=None, lift_factor=None):
+    def write_summary(self, results_path, errors=None, lift_factor=0):
         """
         Writes summary of analysis
         """
@@ -1868,30 +1490,48 @@ class MainWindow(qtw.QMainWindow):
                 f"{self.algorithm_group.checkedButton().text()} analysis "
                 f"of data in \"...{self.indir_label.text()[-51:]}\"\n\n"
             )
-            outfile.write(
-                "Data was analyzed from "
-                f"{self.xmin_spinbox.value()} to "
-                f"{self.xmax_spinbox.value()} "
-                f"{self.input_format_group.checkedButton().text()}\n"
-            )
+
+            if self.limit_xaxis_checkbox.isChecked():
+                outfile.write(
+                    "Data was analyzed from "
+                    f"{self.xmin_spinbox.value()} to "
+                    f"{self.xmax_spinbox.value()} "
+                    f"{self.input_format_group.checkedButton().text()}\n"
+                )
+
+            if self.limit_scans_checkbox.isChecked():
+                outfile.write(
+                    "Data was analyzed from "
+                    f"{self.scanmin_spinbox.value()} to "
+                    f"{self.scanmax_spinbox.value()} "
+                    f"scans\n"
+                )
+
+            if lift_factor<0:
+                outfile.write(
+                    "Due to negative values, "
+                    f"your dataset was lifted by {lift_factor} during analysis, "
+                    "before subsequent lowering\n"
+                )
+
             outfile.write("The following algorithm parameters where used:\n")
             match self.algorithm_group.checkedButton().text():
                 case "PCA":
-                    outfile.write(f"Whiten: {self.pca_whiten_checkbox.isChecked()}\n")
-                    outfile.write(f"SVD solver: {self.pca_solver_dropdown.currentText()}\n")
+                    outfile.write(f"\tWhiten: {self.pca_whiten_checkbox.isChecked()}\n")
+                    outfile.write(f"\tSVD solver: {self.pca_solver_dropdown.currentText()}\n")
                     if self.pca_solver_dropdown.currentText()=="arpack":
-                        outfile.write(f"Tolerance: {self.pca_tol_spinbox.value()}\n")
+                        outfile.write(f"\tTolerance: {self.pca_tol_spinbox.value()}\n")
                     if self.pca_solver_dropdown.currentText()=="randomized":
-                        outfile.write("# of iterations (Power method): "f"{
+                        outfile.write("\t# of iterations (Power method): "f"{
                             self.pca_iterated_power_spinbox()
                             if self.pca_iterated_power_auto_checkbox.isChecked()
                             else 'auto'
                         }\n")
-                        outfile.write("Additional vectors to sample data: "
+                        outfile.write("\tAdditional vectors to sample data: "
                                       f"{self.pca_n_oversampled_spinbox.value()}\n"
                         )
                         outfile.write(
-                            "Power iteration normalizer: "
+                            "\tPower iteration normalizer: "
                             f"{self.pca_power_iteration_normalizer_dropdown.currentText()}\n"
                         )
                         outfile.write(
@@ -1901,69 +1541,60 @@ class MainWindow(qtw.QMainWindow):
                         )
                 case "NMF":
                     outfile.write(
-                        "Initialization method: "
+                        "\tInitialization method: "
                         f"{self.nmf_init_dropdown.currentText()}\n"
                         )
-                    outfile.write(f"Numerical solver: {self.nmf_solver_dropdown.currentText()}\n")
+                    outfile.write(f"\tNumerical solver: {self.nmf_solver_dropdown.currentText()}\n")
                     if self.nmf_solver_dropdown.currentText()=='mu':
                         outfile.write(
-                            "Beta divergence to minimize: "
+                            "\tBeta divergence to minimize: "
                             f"{self.nmf_beta_loss_dropdown.currentText()}\n"
                         )
-                    outfile.write(f"Tolerance: {self.nmf_tol_spinbox.value()}\n")
+                    outfile.write(f"\tTolerance: {self.nmf_tol_spinbox.value()}\n")
                     outfile.write(
-                        "Maximum number of iterations: "
+                        "\tMaximum number of iterations: "
                         f"{self.nmf_max_iter_spinbox.value()}\n"
                     )
                     outfile.write(
-                        "Regularization constant for features: "
+                        "\tRegularization constant for features: "
                         f"{self.nmf_alpha_w_spinbox.value()}\n"
                     )
                     outfile.write(
-                        "Regularization constant for samples: "
+                        "\tRegularization constant for samples: "
                         f"{self.nmf_alpha_h_spinbox.value()}\n"
-                    ) # Should work even if alpha_Hsame=True
+                    )
                     outfile.write(
-                        "Regularization mixing parameter (0=l2, 1=l1): "
+                        "\tRegularization mixing parameter (0=l2, 1=l1): "
                         f"{self.nmf_l1_ratio_spinbox.value()}\n"
                     )
-                    if lift_factor<0:
-                        outfile.write(
-                            "Due to negative values, "
-                            f"your dataset was lifted by {lift_factor} during analysis, "
-                            "before subsequent lowering\n"
-                        )
                     if self.nmf_rescale_checkbox:
                         outfile.write("Scores were rescaled to sum to 1\n")
-                    if errors is not None:
-                        outfile.write(
-                            "\nThe NMF reconstruction error for "
-                            f"{self.comp_num_slider.value()} components was: "
-                            f"{errors[self.comp_num_slider.value()+1]:.2f}\n"
-                        )
                 case "ICA":
-                    outfile.write(f"Algorithm: {self.ica_algorithm_dropdown.currentText()}\n")
-                    outfile.write(f"Whitening strategy: {self.ica_whiten_dropdown.currentText()}\n")
+                    outfile.write(f"\tAlgorithm: {self.ica_algorithm_dropdown.currentText()}\n")
                     outfile.write(
-                        "Whitening solver: "
+                        "\tWhitening strategy: "
+                        f"{self.ica_whiten_dropdown.currentText()}\n"
+                    )
+                    outfile.write(
+                        "\tWhitening solver: "
                         f"{self.ica_whiten_solver_dropdown.currentText()}\n"
                     )
                     outfile.write(
-                        "Functional G form function: "
+                        "\tFunctional G form function: "
                         f"{self.ica_fun_dropdown.currentText()}\n"
                     )
                     outfile.write(
-                        "Maximum number of iterations: "
+                        "\tMaximum number of iterations: "
                         f"{self.ica_max_iter_spinbox.value()}\n"
                     )
-                    outfile.write(f"Tolerance: {self.ica_tol_spinbox.value()}\n")
+                    outfile.write(f"\tTolerance: {self.ica_tol_spinbox.value()}\n")
                 case "SNMF":
                     outfile.write(
-                        "Minimum number of iterations: "
+                        "\tMinimum number of iterations: "
                         f"{self.snmf_min_iter_spinbox.value()}\n"
                     )
                     outfile.write(
-                        "Maximum number of iterations: "
+                        "\tMaximum number of iterations: "
                         f"{self.snmf_max_iter_spinbox.value()}\n"
                     )
                     outfile.write(f"Tolerance: {self.snmf_tol_spinbox.value()}\n")
@@ -1973,12 +1604,20 @@ class MainWindow(qtw.QMainWindow):
                         "! Be aware that stretching uses division, "
                         "not multiplication (component / stretch) !"
                     )
+
+            if errors is not None:
+                outfile.write(
+                    "\nThe NMF reconstruction error for "
+                    f"{self.comp_num_slider.value()} components was: "
+                    f"{errors[self.comp_num_slider.value()+1]:.2f}\n"
+                )
+
         print("Summary written")
 
     def export_results(self, angles, intensities, fitted, transformed, reconstructed, *,
                        fig=None,
                        errors=None,
-                       lift_factor=None,
+                       lift_factor=0,
                        stretch=None
     ):
         """

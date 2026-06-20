@@ -41,8 +41,10 @@ def most_common_filetype(indir: str, verbose=True):
     # Checks if there are multiple equally popular file extensions
     popular_filetypes = [key for key, value in filetypes.items() if value == filetypes[filetype]]
     if len(popular_filetypes)>1:
-        raise NotImplementedError("Multiple equally popular filetypes found:" \
-                                  f"({popular_filetypes}). Check dir and e-run")
+        print(
+            f"Multiple equally popular filetypes found: ({popular_filetypes}).\n"
+            f"Assuming {filetype}. If unwanted, check dir and re-run"
+        )
 
     if verbose:
         print(f"\tMost common filetype: {filetype}")
@@ -334,7 +336,7 @@ def write_comp_contribute(angles, results_path, fitted, transformed, stretch=Non
     transformed: ndarray
         2D array of shape (samples, comp_num) containing scaling of extracted components
     stretch: ndarray
-        2D array of shape (comp_num, features) containing angle stretch of extracted components
+        2D array of shape (samples, comp_num) containing stretching of extracted components
     """
     os.mkdir(f"{results_path}/component_contributions")
 
@@ -342,15 +344,26 @@ def write_comp_contribute(angles, results_path, fitted, transformed, stretch=Non
         for comp_num, component in enumerate(fitted.components_):
             os.mkdir(f"{results_path}/component_contributions/component_{comp_num+1:02}")
             for i in range(len(transformed)): # Number of scans
+                # Recasts scaled component from stretched to original grid
+                component_adjusted = (
+                    np.interp(
+                        angles[i] / stretch[i][comp_num], # current grid
+                        angles[i], # new grid
+                        component, # component (y-values)
+                        left=component[0],
+                        right=component[-1],
+                    )
+                    * transformed[i][comp_num] # scale component
+                )
                 with open(f"{results_path}/component_contributions/"
                           f"component_{comp_num+1:02}/c{comp_num+1:02}_contribution_scan_{i}.xy",
                           'w',
                           encoding='utf-8') as outfile:
-                    for j in range(len(angles[comp_num])): # Index in scan
+                    for j in range(len(angles[i])): # Index in scan
                         outfile.write(
-                            f"{angles[i][j]/stretch[i][comp_num]}"
-                            f"\t{component[j]*transformed[i][comp_num]}\n"
-                        ) # Component multiplied by its scoring at that scan number
+                            f"{angles[i][j]}"
+                            f"\t{component_adjusted[j]}\n"
+                        )
     else:
         for comp_num, component in enumerate(fitted.components_):
             os.mkdir(f"{results_path}/component_contributions/component_{comp_num+1:02}")
@@ -359,7 +372,7 @@ def write_comp_contribute(angles, results_path, fitted, transformed, stretch=Non
                           f"{comp_num+1:02}/c{comp_num+1:02}_contribution_scan_{i}.xy",
                           'w',
                           encoding='utf-8') as outfile:
-                    for j in range(len(angles[comp_num])): # Index in scan
+                    for j in range(len(angles[i])): # Index in scan
                         outfile.write(
                             f"{angles[i][j]}"
                             f"\t{component[j]*transformed[i][comp_num]}\n"

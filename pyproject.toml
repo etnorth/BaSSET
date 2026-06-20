@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "BaSSET-UiO"
-version = "1.4.3a1"
+version = "1.4.4a"
 dependencies = [
     "natsort",
     "numpy",
@@ -39,14 +39,14 @@ basset = "basset.main:main"
 [project.gui-scripts]
 basset-gui = "basset.main:main"
 
-[tool.setuptools]
-packages = ["basset"]
+[tool.setuptools.packages.find]
+include = [
+    "basset",
+    "basset.*"
+]
 
 [tool.setuptools.package-data]
-basset = [
-    "assets/*",
-    "utils/*"
-]
+basset = ["assets/*"]
 
 [project.urls]
 Repository = "https://github.com/etnorth/BaSSET"
