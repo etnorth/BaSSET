@@ -44,7 +44,6 @@ def NMF_analysis(intensities, comp_num, *,
                  alpha_H,
                  l1_ratio,
                  calc_err,
-                 rescale,
                  exp_win,
                  W,
                  H,
@@ -59,7 +58,7 @@ def NMF_analysis(intensities, comp_num, *,
     lift_factor = intensities.min()
     if lift_factor < 0:
         intensities -= lift_factor
-        print("Negative value found in dataset. Lifting data above zero")
+        print("\tNegative value found in dataset. Lifting data above zero")
 
     if (W is not None) ^ (H is not None): # XOR, if both are none, go on, if one is none do this
         print("\tPerforming NMF with initial guesses as warm-start")
@@ -107,7 +106,10 @@ def NMF_analysis(intensities, comp_num, *,
         nmf_model = nmf_model.fit(intensities, W=W, H=H)
         transformed = nmf_model.transform(intensities)
         reconstructed = nmf_model.inverse_transform(transformed)
-        print(f"\tNMF ({comp_num}) reconstruction error: {nmf_model.reconstruction_err_:10f}")
+        print(
+            f"\tNMF ({comp_num}) reconstruction error: "
+            f"{nmf_model.reconstruction_err_:10f} in {nmf_model.n_iter_} iterations"
+        )
 
     elif calc_err:
         print("\tPerforming NMF from 2-10 components to calculate error")
@@ -130,7 +132,7 @@ def NMF_analysis(intensities, comp_num, *,
             errors[i] = nmf_model_temp.reconstruction_err_
             print(
                 f"\tNMF ({n_components}) reconstruction error: "
-                f"{nmf_model_temp.reconstruction_err_:10f}"
+                f"{nmf_model_temp.reconstruction_err_:10f} in {nmf_model.n_iter_} iterations"
             )
 
             if comp_num == n_components:
@@ -173,7 +175,7 @@ def NMF_analysis(intensities, comp_num, *,
         H = nmf_model.components_
         print(
             f"\tNMF ({win_comps[0]}) [start to {win_ends[0]}] reconstruction error: "
-            f"{nmf_model.reconstruction_err_:10f}"
+            f"{nmf_model.reconstruction_err_:10f} in {nmf_model.n_iter_} iterations"
         )
 
         for i, (win_end, win_comp) in enumerate(zip(win_ends[1:], win_comps[1:])):
@@ -209,7 +211,7 @@ def NMF_analysis(intensities, comp_num, *,
             H = nmf_model.components_
             print(
                 f"\tNMF ({win_comp}) [start to {win_end}] reconstruction error: "
-                f"{nmf_model.reconstruction_err_:10f}"
+                f"{nmf_model.reconstruction_err_:10f} in {nmf_model.n_iter_} iterations"
             )
 
         transformed = W
@@ -229,7 +231,10 @@ def NMF_analysis(intensities, comp_num, *,
         nmf_model = nmf_model.fit(intensities)
         transformed = nmf_model.transform(intensities)
         reconstructed = nmf_model.inverse_transform(transformed)
-        print(f"\tNMF ({comp_num}) reconstruction error: {nmf_model.reconstruction_err_:10f}")
+        print(
+            f"\tNMF ({comp_num}) reconstruction error: "
+            f"{nmf_model.reconstruction_err_:10f} in {nmf_model.n_iter_} iterations"
+        )
 
     if lift_factor < 0: # Lower data below zero again
         intensities += lift_factor
@@ -279,7 +284,7 @@ def SNMF_analysis(intensities, comp_num, *,
     lift_factor = intensities.min()
     if lift_factor < 0:
         intensities -= lift_factor
-        print("Negative value found in dataset. Lifting data above zero")
+        print("\tNegative value found in dataset. Lifting data above zero")
 
     if calc_err:
         n_components_list = np.arange(1, min(10,*np.shape(intensities))+1, dtype=int)

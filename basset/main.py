@@ -1220,7 +1220,6 @@ class MainWindow(qtw.QMainWindow):
                     ),
                     l1_ratio=self.nmf_l1_ratio_spinbox.value(),
                     calc_err=self.calc_err_checkbox.isChecked(),
-                    rescale=self.nmf_rescale_checkbox.isChecked(),
                     exp_win={
                         'enable': self.exp_win_checkbox.isChecked(),
                         'do_custom': self.exp_win_custom_checkbox.isChecked(),
@@ -1321,6 +1320,7 @@ class MainWindow(qtw.QMainWindow):
 
         recon_num = np.zeros(comp_num, dtype=int)
         user_recons = np.fromstring(self.display_recon_line.text(), dtype=int, sep=',')
+        user_recons = user_recons[:comp_num] if len(user_recons)>comp_num else user_recons
         recon_num[:len(user_recons)] = user_recons
         if (recon_num == 0).any():
             uniform_recons = np.linspace(1, len(reconstructed), comp_num, dtype=int)
@@ -1338,6 +1338,19 @@ class MainWindow(qtw.QMainWindow):
         else:
             ax_scores = fig.add_subplot(gs[2,0:(comp_num // 2)+1])
             ax_errors = fig.add_subplot(gs[2,(comp_num // 2)+1:])
+
+        if (
+            self.nmf_rescale_checkbox.isChecked()
+            and self.algorithm_group.checkedButton().text()=="NMF"
+        ):
+            print("Rescaling scores for plot visual")
+            row_sums = np.sum(transformed, axis=1, keepdims=True) # Sums scores per sample
+            transformed = transformed / row_sums # Rescales scores so they sum to one per sample
+            ax_scores.set_title("Normalized Scores")
+            ax_scores.set_ylim(0, 1)
+        else:
+            ax_scores.set_title("Scores")
+            ax_scores.set_ylim(min(0,np.min(transformed)), np.max(transformed))
 
         for i in range(comp_num):
             ax_comp = fig.add_subplot(gs[0, i])
@@ -1421,16 +1434,6 @@ class MainWindow(qtw.QMainWindow):
         ax_errors.legend(l, h, title="↑", frameon=True)
         ax_scores.set_xlabel("Scan #")
         ax_scores.set_xlim(1, len(angles))
-
-        if (
-            self.nmf_rescale_checkbox.isChecked()
-            and self.algorithm_group.checkedButton().text()=="NMF"
-        ):
-            ax_scores.set_title("Normalized Scores")
-            ax_scores.set_ylim(0, 1)
-        else:
-            ax_scores.set_title("Scores")
-            ax_scores.set_ylim(min(0,np.min(transformed)), np.max(transformed))
 
         match self.algorithm_group.checkedButton().text():
             case "PCA":

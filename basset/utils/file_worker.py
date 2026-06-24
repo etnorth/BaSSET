@@ -213,7 +213,7 @@ def import_init_guess(indir: str):
             _, y = import_data(filename)
             init_components.append(y)
         init_components = np.array(init_components)
-        print("Components imported")
+        print(f"Imported {len(init_components)} components")
 
     print("Looking for scores file")
     scoresfile = glob(f"{indir}*.csv")

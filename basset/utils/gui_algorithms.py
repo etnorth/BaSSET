@@ -244,7 +244,10 @@ def init_nmf_algorithm_widgets(parent):
 
     parent.nmf_rescale_checkbox = qtw.QCheckBox("Rescale")
     parent.algorithm_parameters_layout.addWidget(parent.nmf_rescale_checkbox, 2,2)
-    parent.nmf_rescale_checkbox.setToolTip("Rescales scores to sum to 1")
+    parent.nmf_rescale_checkbox.setToolTip(
+        "Visually rescales scores to sum to 1 for clarity\n"
+        "Note: This does not affect the exported scores, and does not inversely scale components"
+    )
 
     # Ignored NMF parmeters:
     # random_state
