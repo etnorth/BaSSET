@@ -1559,19 +1559,17 @@ class MainWindow(qtw.QMainWindow):
                         f"{self.nmf_max_iter_spinbox.value()}\n"
                     )
                     outfile.write(
-                        "\tRegularization constant for features: "
+                        "\tRegularization constant for scores (alpha_w): "
                         f"{self.nmf_alpha_w_spinbox.value()}\n"
                     )
                     outfile.write(
-                        "\tRegularization constant for samples: "
+                        "\tRegularization constant for components (alpha_h): "
                         f"{self.nmf_alpha_h_spinbox.value()}\n"
                     )
                     outfile.write(
                         "\tRegularization mixing parameter (0=l2, 1=l1): "
                         f"{self.nmf_l1_ratio_spinbox.value()}\n"
                     )
-                    if self.nmf_rescale_checkbox:
-                        outfile.write("Scores were rescaled to sum to 1\n")
                 case "ICA":
                     outfile.write(f"\tAlgorithm: {self.ica_algorithm_dropdown.currentText()}\n")
                     outfile.write(
