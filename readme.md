@@ -1,6 +1,6 @@
 # Battery Signal Selection and Enhancement Toolbox
 
-BaSSET is a Python GUI software designed to simplify multivariate analysis of _operando_ scattering experiments through integrating common algorithms with easy access to change parameters and visualize results.
+BaSSET is a Python GUI software designed to simplify multivariate analysis of _in-situ_ and _operando_ scattering experiments through integrating common algorithms with easy access to change parameters and visualize results.
 
 # Installation
 
@@ -11,10 +11,12 @@ Other than this, they both act the same.
 
 # Acknowledgements
 
-This package is simply a GUI interface for multivariate analysis methods, with built-in results viewing and export functionality. All credit goes to the creators of the utililzed algorithms.
+This package is mostly a GUI interface for multivariate analysis methods, with built-in pre-processing, results viewing, and export functionality. All credit goes to the creators of the utililzed algorithms.
 
-PCA, NMF and ICA  come from `scikit-learn` [1].  
-SNMF comes from `diffpy.stretched-nmf` [2].
+PCA, NMF and ICA: `scikit-learn` [1].  
+SNMF: `diffpy.stretched-nmf` [2].  
+CNMF: `constrained-matrix-factorization` [3].
 
 [1] Fabian Pedregosa, Gaël Varoquaux, Alexandre Gramfort, Vincent Michel, Bertrand Thirion, Olivier Grisel, Mathieu Blondel, Peter Prettenhofer, Ron Weiss, Vincent Dubourg, Jake Vanderplas, Alexandre Passos, David Cournapeau, Matthieu Brucher, Matthieu Perrot, Édouard Duchesnay, [Scikit-learn: Machine Learning in Python](https://jmlr.csail.mit.edu/papers/v12/pedregosa11a.html), *Journal of Machine Learning Research* **12**, pp. 2825-2830 (2011).  
-[2] Ran Gu, Yevgeny Rakita, Ling Lan, Zach Thatcher, Gabrielle E. Kamm, Daniel O'Nolan, Brennan McBride, Allison Wustrow, James R. Neilson, Karena W. Chapman, Qiang Du, and Simon J. L. Billinge, [Stretched Non-negative Matrix Factorization](https://doi.org/10.1038/s41524-024-01377-5), npj *Comput Mater* **10**, 193 (2024).
+[2] Ran Gu, Yevgeny Rakita, Ling Lan, Zach Thatcher, Gabrielle E. Kamm, Daniel O'Nolan, Brennan McBride, Allison Wustrow, James R. Neilson, Karena W. Chapman, Qiang Du, and Simon J. L. Billinge, [Stretched Non-negative Matrix Factorization](https://doi.org/10.1038/s41524-024-01377-5), npj *Comput Mater* **10**, 193 (2024).  
+[3] Phillip M. Maffettone, Aidan C. Daly, Daniel Olds; [Constrained non-negative matrix factorization enabling real-time insights of in situ and high-throughput experiments](https://doi-org.ezproxy.uio.no/10.1063/5.0052859), *Appl. Phys. Rev.* **8**, 041410 (2021).|  

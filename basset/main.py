@@ -257,8 +257,23 @@ class MainWindow(qtw.QMainWindow):
         ######################
         ##### Background #####
         ######################
+        self.calc_err_checkbox = qtw.QCheckBox("Calculate Errors")
+        self.calc_err_checkbox.setChecked(True)
+        self.calc_err_checkbox.setToolTip(
+            "Calculates errors for 1 to 10 components "
+            "and shows the resulting scree plot"
+        )
+        self.add_options_layout.addWidget(self.calc_err_checkbox, 1,0)
+
+        self.verbose_checkbox = qtw.QCheckBox("Verbose")
+        self.verbose_checkbox.setToolTip("Enables print statements during optimization")
+        self.add_options_layout.addWidget(self.verbose_checkbox, 1,1)
+
+        ###############################
+        ##### Subtract background #####
+        ###############################
         self.bkg_checkbox = qtw.QCheckBox("Subtract background")
-        self.add_options_layout.addWidget(self.bkg_checkbox,1,0)
+        self.add_options_layout.addWidget(self.bkg_checkbox,2,0)
         self.bkg_checkbox.setToolTip("Set and scale a background file to subtract from all scans")
 
         self.bkg_label = qtw.QLabel("Select a background for subtraction")
@@ -300,7 +315,7 @@ class MainWindow(qtw.QMainWindow):
         ##### Initial Guess #####
         #########################
         self.init_guess_checkbox = qtw.QCheckBox("Initial guess")
-        self.add_options_layout.addWidget(self.init_guess_checkbox,1,1)
+        self.add_options_layout.addWidget(self.init_guess_checkbox,2,1)
         self.init_guess_checkbox.setToolTip(
             "Warm-start optimization by providing a folder containing\n"
             "one or more component files and/or a CSV of one or more scores\n"
@@ -350,25 +365,30 @@ class MainWindow(qtw.QMainWindow):
             "Set own window borders or use uniform distribution\n"
             "(incompatible with \"Errors\")"
         )
-        self.add_options_layout.addWidget(self.exp_win_checkbox,2,0)
+        self.add_options_layout.addWidget(self.exp_win_checkbox,3,0)
 
         self.exp_win_custom_checkbox = qtw.QCheckBox("Custom")
         self.exp_win_custom_checkbox.setToolTip("Set own windows or use uniform distribution")
-        self.add_options_layout.addWidget(self.exp_win_custom_checkbox,3,0)
+        self.add_options_layout.addWidget(self.exp_win_custom_checkbox,4,0)
 
         self.exp_win_num_spinbox = qtw.QSpinBox()
         self.exp_win_num_spinbox.setMinimum(1)
         self.exp_win_num_spinbox.setDisabled(True)
         self.exp_win_num_spinbox.setToolTip("Number of windows for uniform distribution")
-        self.add_options_layout.addWidget(self.exp_win_num_spinbox,3,1)
+        self.add_options_layout.addWidget(self.exp_win_num_spinbox,4,1)
 
         self.exp_win_sublayout = qtw.QGridLayout()
-        self.add_options_layout.addLayout(self.exp_win_sublayout, 4,0,2,2)
+        self.add_options_layout.addLayout(self.exp_win_sublayout, 5,0,2,2)
 
         self.exp_win_comps_label = qtw.QLabel("Components")
         self.exp_win_sublayout.addWidget(self.exp_win_comps_label, 0,0)
 
         self.exp_win_comps_line = qtw.QLineEdit()
+        self.exp_win_comps_line.setValidator(
+            qtg.QRegularExpressionValidator(
+                qtc.QRegularExpression("^[0-9]+(,[0-9]+)*$"), self.exp_win_comps_line
+            )
+        )
         self.exp_win_comps_line.setToolTip(
             "Enter how many components you'd like for each window separated by comma (,)\n"
             "(leave empty for all components from the start)"
@@ -379,6 +399,11 @@ class MainWindow(qtw.QMainWindow):
         self.exp_win_sublayout.addWidget(self.exp_win_custom_label, 1,0)
 
         self.exp_win_custom_line = qtw.QLineEdit()
+        self.exp_win_custom_line.setValidator(
+            qtg.QRegularExpressionValidator(
+                qtc.QRegularExpression("^[0-9]+(,[0-9]+)*$"), self.exp_win_custom_line
+            )
+        )
         self.exp_win_custom_line.setDisabled(True)
         self.exp_win_custom_line.setToolTip("Enter window borders separated by comma (,)")
         self.exp_win_sublayout.addWidget(self.exp_win_custom_line, 1,1)
@@ -441,22 +466,18 @@ class MainWindow(qtw.QMainWindow):
         self.snmf_button.setToolTip("Stretched Non-Negative Matrix Factorization (diffpy)")
         self.algorithm_layout.addWidget(self.snmf_button, 2,0)
 
+        self.cnmf_button = qtw.QRadioButton("CNMF")
+        self.cnmf_button.setToolTip(
+            "Constrained Non-Negative Matrix Factorization "
+            "(constrained-matrix-factorization)"
+        )
+        self.algorithm_layout.addWidget(self.cnmf_button, 2,1)
+
         self.algorithm_group.addButton(self.pca_button)
         self.algorithm_group.addButton(self.nmf_button)
         self.algorithm_group.addButton(self.ica_button)
         self.algorithm_group.addButton(self.snmf_button)
-
-        self.calc_err_checkbox = qtw.QCheckBox("Errors")
-        self.calc_err_checkbox.setChecked(True)
-        self.calc_err_checkbox.setToolTip(
-            "Calculates errors for 1 to 10 components "
-            "and shows the resulting scree plot"
-        )
-        self.algorithm_layout.addWidget(self.calc_err_checkbox, 2,1)
-
-        self.verbose_checkbox = qtw.QCheckBox("Verbose")
-        self.verbose_checkbox.setToolTip("Enables print statements during optimization")
-        self.algorithm_layout.addWidget(self.verbose_checkbox, 2,2)
+        self.algorithm_group.addButton(self.cnmf_button)
 
         self.comp_num_layout = qtw.QGridLayout()
         self.grid.addLayout(self.comp_num_layout, 3,1)
@@ -508,6 +529,7 @@ class MainWindow(qtw.QMainWindow):
         gui_algorithms.init_nmf_algorithm_widgets(self)
         gui_algorithms.init_ica_algorithm_widgets(self)
         gui_algorithms.init_snmf_algorithm_widgets(self)
+        gui_algorithms.init_cnmf_algorithm_widgets(self)
 
         #####################################
         ##### Analysis and plot widgets #####
@@ -582,12 +604,16 @@ class MainWindow(qtw.QMainWindow):
         self.display_layout.addWidget(self.display_recon_label, 1,0)
 
         self.display_recon_line = qtw.QLineEdit()
+        self.display_recon_line.setValidator(
+            qtg.QRegularExpressionValidator(
+                qtc.QRegularExpression("^[0-9]+(,[0-9]+)*$"), self.display_recon_line
+            )
+        )
         self.display_recon_line.setToolTip(
             "Enter scan numbers to display reconstruction of separated by comma (,)\n"
             "(empty or missing scans: fills with uniform distribution)"
         )
         self.display_layout.addWidget(self.display_recon_line, 1,1)
-        self.display_layout.setRowStretch(2,1)
 
         self.grid.setColumnStretch(1,1)
         self.grid.setRowStretch(5,1)
@@ -1137,6 +1163,14 @@ class MainWindow(qtw.QMainWindow):
         passes analysis to algorithms,
         and sends results to plotting
         """
+        if self.indir_label.text()=="Select the folder containing your dataset":
+            qtw.QMessageBox.critical(
+                self,
+                "Analysis start-up",
+                "You must set a data file directory!"
+            )
+            return
+
         data = self.preprocess()
         if data is None:
             return
@@ -1150,12 +1184,12 @@ class MainWindow(qtw.QMainWindow):
                     self.init_guess_label.text()
                 )
                 if (
-                    init_scores is not None
-                    and init_scores.shape[1] != intensities.shape[1]
+                    init_components is not None
+                    and init_components.shape[1] != intensities.shape[1]
                 ):
                     raise ValueError(
                         f"Expected {intensities.shape[1]} data points in guessed components, "
-                        f"but got {init_scores.shape[1]}"
+                        f"but got {init_components.shape[1]}"
                     )
             except (FileNotFoundError, ValueError, IOError) as e:
                 qtw.QMessageBox.critical(
@@ -1279,6 +1313,58 @@ class MainWindow(qtw.QMainWindow):
                     eta=self.snmf_eta_spinbox.value(),
                     calc_err=self.calc_err_checkbox.isChecked(),
                     verbose=self.verbose_checkbox.isChecked()
+                )
+            case "CNMF":
+                fitted, transformed, reconstructed, errors, lift_factor = analysis.CNMF_analysis(
+                    intensities,
+                    comp_num=self.comp_num_slider.value(),
+                    beta=self.cnmf_beta_spinbox.value(),
+                    tol=self.cnmf_tol_spinbox.value(),
+                    max_iter=self.cnmf_max_iter_spinbox.value(),
+                    alpha=self.cnmf_alpha_spinbox.value(),
+                    l1_ratio=self.cnmf_l1_ratio_spinbox.value(),
+                    calc_err=self.calc_err_checkbox.isChecked(),
+                    exp_win={
+                        'enable': self.exp_win_checkbox.isChecked(),
+                        'do_custom': self.exp_win_custom_checkbox.isChecked(),
+                        'num_win': self.exp_win_num_spinbox.value(),
+                        'comps': np.fromstring(
+                            self.exp_win_comps_line.text(),
+                            dtype=int,
+                            sep=','
+                        ),
+                        'win_custom': np.fromstring(
+                            self.exp_win_custom_line.text(),
+                            dtype=int,
+                            sep=','
+                        )
+                    },
+                    W = (
+                        init_scores
+                        if (
+                            self.init_guess_label.text()
+                            != "Select a folder with initial guess at solution"
+                        )
+                        else None
+                    ),
+                    W_fix=list(np.fromstring(
+                        self.fix_weights_line.text(),
+                        dtype=bool,
+                        sep=','
+                    )) if self.fix_weights_line.text() else [],
+                    H = (
+                        init_components
+                        if (
+                            self.init_guess_label.text()
+                            != "Select a folder with initial guess at solution"
+                        )
+                        else None
+                    ),
+                    H_fix=list(np.fromstring(
+                        self.fix_components_line.text(),
+                        dtype=bool,
+                        sep=','
+                    )) if self.fix_components_line.text() else []
                 )
 
         print("Analysis completed\n")
@@ -1451,6 +1537,8 @@ class MainWindow(qtw.QMainWindow):
                 if errors is not None:
                     ax_errors.plot(np.arange(1, min(10,*np.shape(intensities))+1), errors, "ko--")
                     ax_errors.set_title("Reconstruction error")
+            case "CNMF":
+                pass
 
         ax_errors.set_xlim(0.9, 10.1)
 
@@ -1612,6 +1700,8 @@ class MainWindow(qtw.QMainWindow):
                     f"{self.comp_num_slider.value()} components was: "
                     f"{errors[self.comp_num_slider.value()+1]:.2f}\n"
                 )
+
+            outfile.write("\nPerformed using BaSSET v1.5.0a")
 
         print("Summary written")
 

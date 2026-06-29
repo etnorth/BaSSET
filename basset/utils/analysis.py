@@ -4,9 +4,18 @@ Module containing algorithm calls for BaSSET's data analysis
 # pylint: disable=invalid-name
 
 import numpy as np
+import torch
 from sklearn.decomposition import PCA, NMF, FastICA
 from sklearn.decomposition._nmf import _initialize_nmf
 from diffpy.stretched_nmf.snmf_class import SNMFOptimizer, _reconstruct_matrix
+from constrainedmf.nmf.models import NMF as CNMF
+
+class ComponentsResult:
+    """
+    Tiny Class to make CNMF interfacing with BaSSET easier
+    """
+    def __init__(self, components_):
+        self.components_ = components_
 
 
 def PCA_analysis(intensities, comp_num, *, # pylint: disable=unused-argument
@@ -108,7 +117,7 @@ def NMF_analysis(intensities, comp_num, *,
         reconstructed = nmf_model.inverse_transform(transformed)
         print(
             f"\tNMF ({comp_num}) reconstruction error: "
-            f"{nmf_model.reconstruction_err_:10f} in {nmf_model.n_iter_} iterations"
+            f"{nmf_model.reconstruction_err_:.6e} in {nmf_model.n_iter_} iterations"
         )
 
     elif calc_err:
@@ -132,7 +141,7 @@ def NMF_analysis(intensities, comp_num, *,
             errors[i] = nmf_model_temp.reconstruction_err_
             print(
                 f"\tNMF ({n_components}) reconstruction error: "
-                f"{nmf_model_temp.reconstruction_err_:10f} in {nmf_model.n_iter_} iterations"
+                f"{nmf_model_temp.reconstruction_err_:.6e} in {nmf_model.n_iter_} iterations"
             )
 
             if comp_num == n_components:
@@ -175,7 +184,7 @@ def NMF_analysis(intensities, comp_num, *,
         H = nmf_model.components_
         print(
             f"\tNMF ({win_comps[0]}) [start to {win_ends[0]}] reconstruction error: "
-            f"{nmf_model.reconstruction_err_:10f} in {nmf_model.n_iter_} iterations"
+            f"{nmf_model.reconstruction_err_:.6e} in {nmf_model.n_iter_} iterations"
         )
 
         for i, (win_end, win_comp) in enumerate(zip(win_ends[1:], win_comps[1:])):
@@ -211,7 +220,7 @@ def NMF_analysis(intensities, comp_num, *,
             H = nmf_model.components_
             print(
                 f"\tNMF ({win_comp}) [start to {win_end}] reconstruction error: "
-                f"{nmf_model.reconstruction_err_:10f} in {nmf_model.n_iter_} iterations"
+                f"{nmf_model.reconstruction_err_:.2} in {nmf_model.n_iter_} iterations"
             )
 
         transformed = W
@@ -233,7 +242,7 @@ def NMF_analysis(intensities, comp_num, *,
         reconstructed = nmf_model.inverse_transform(transformed)
         print(
             f"\tNMF ({comp_num}) reconstruction error: "
-            f"{nmf_model.reconstruction_err_:10f} in {nmf_model.n_iter_} iterations"
+            f"{nmf_model.reconstruction_err_:.6e} in {nmf_model.n_iter_} iterations"
         )
 
     if lift_factor < 0: # Lower data below zero again
@@ -303,7 +312,7 @@ def SNMF_analysis(intensities, comp_num, *,
             errors[i] = X_temp.reconstruction_err_
             print(
                 f"\tSNMF ({n_components}) reconstruction error: "
-                f"{X_temp.reconstruction_err_:10f}"
+                f"{X_temp.reconstruction_err_:.6e}"
             )
             if comp_num == n_components:
                 X = X_temp
@@ -324,7 +333,7 @@ def SNMF_analysis(intensities, comp_num, *,
         transformed = snmf_model.weights_
         stretch = snmf_model.stretch_
         reconstructed = _reconstruct_matrix(snmf_model.components_, transformed, stretch)
-        print(f"\tNMF ({comp_num}) reconstruction error: {X.reconstruction_err_:10f}")
+        print(f"\tNMF ({comp_num}) reconstruction error: {X.reconstruction_err_:.6e}")
 
     if lift_factor < 0: # Lower data below zero again
         intensities += lift_factor
@@ -338,3 +347,66 @@ def SNMF_analysis(intensities, comp_num, *,
     reconstructed = reconstructed.T # Transpose results to be in line with sklearn standard
 
     return X, transformed, reconstructed, errors, stretch
+
+def CNMF_analysis(intensities, comp_num, *,
+                 beta,
+                 tol,
+                 max_iter,
+                 alpha,
+                 l1_ratio,
+                 calc_err,
+                 exp_win,
+                 W,
+                 W_fix,
+                 H,
+                 H_fix
+):
+    """
+    Calls on the constrained NMF algorithm and performs a fit to the user's dataset
+    Calculates error for 1-10 components, and if data contains negative values, lifts them
+    """
+    errors = None
+
+    lift_factor = intensities.min()
+    if lift_factor < 0:
+        intensities -= lift_factor
+        print("\tNegative value found in dataset. Lifting data above zero")
+
+    if H is not None:
+        if lift_factor < 0:
+            H -= lift_factor
+        H = [torch.tensor(component[None, :], dtype=torch.float) for component in H]
+    if W is not None:
+        W = [torch.tensor(score[None, :], dtype=torch.float) for score in W]
+    """if calc_err:
+        pass
+    elif exp_win['enable']:
+        pass
+    else:"""
+    cnmf_model = CNMF(intensities.shape,
+            n_components=comp_num,
+            initial_components=H,
+            fix_components=H_fix,
+            initial_weights=W,
+            fix_weights=W_fix)
+    loss = cnmf_model.fit(
+        torch.tensor(intensities, dtype=torch.float),
+        beta=beta,
+        tol=tol,
+        max_iter=max_iter,
+        alpha=alpha,
+        l1_ratio=l1_ratio
+    )
+    weights, components = cnmf_model.W.detach().numpy(), cnmf_model.H.detach().numpy()
+    reconstructed = cnmf_model.reconstruct(components, weights)
+    print(
+        f"\tCNMF ({comp_num}) reconstruction error: "
+        f"{loss[-1]:.6e} in {len(loss)} iterations"
+    )
+
+    if lift_factor < 0: # Lower data below zero again
+        intensities += lift_factor
+        components += lift_factor
+        reconstructed += lift_factor
+
+    return ComponentsResult(components), weights, reconstructed, errors, lift_factor

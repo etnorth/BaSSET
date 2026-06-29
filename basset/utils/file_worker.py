@@ -40,6 +40,7 @@ def most_common_filetype(indir: str, verbose=True):
     filetype = max(filetypes)
     # Checks if there are multiple equally popular file extensions
     popular_filetypes = [key for key, value in filetypes.items() if value == filetypes[filetype]]
+    popular_filetypes = [x for x in popular_filetypes if x] # Removes empty strings (aka. folders)
     if len(popular_filetypes)>1:
         print(
             f"Multiple equally popular filetypes found: ({popular_filetypes}).\n"
@@ -189,9 +190,9 @@ def import_init_guess(indir: str):
     Returns
     -------
     init_components: ndarray
-        2D array of shape (comp_num, features)
+        2D array of shape (<=comp_num, features)
     init_scores: ndarray
-        2D array of shape (samples, comp_num)
+        2D array of shape (<=samples, <=comp_num)
 
     """
     print("Importing initial guess")
@@ -206,6 +207,9 @@ def import_init_guess(indir: str):
 
     if len(filenames)==0:
         print("No components found, will initialize according to algorithm parameters")
+        init_components = None
+    elif len(filenames)==1:
+        print("Assuming singular file is scores, not component")
         init_components = None
     else:
         init_components = []

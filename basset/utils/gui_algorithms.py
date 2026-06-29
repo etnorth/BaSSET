@@ -2,7 +2,9 @@
 Handles GUI creation, connection and parameters for BaSSET's algorithms
 """
 
+import PyQt6.QtCore as qtc
 import PyQt6.QtWidgets as qtw
+import PyQt6.QtGui as qtg
 
 from basset.utils import (
     gui_helper
@@ -344,7 +346,7 @@ def init_ica_algorithm_widgets(parent):
 
 def init_snmf_algorithm_widgets(parent):
     """
-    Creates and connects widgets for ICA algorithm parameters
+    Creates and connects widgets for strethced NMF algorithm parameters
 
     Parameters
     ----------
@@ -413,6 +415,108 @@ def init_snmf_algorithm_widgets(parent):
         parent.snmf_eta_spinbox
     ]
 
+def init_cnmf_algorithm_widgets(parent):
+    """
+    Creates and connects widgets for Constrained NMF algorithm parameters
+
+    Parameters
+    ----------
+    parent: QMainWindow
+        Window to anchor widgets to
+    """
+    parent.fix_components_line = qtw.QLineEdit()
+    parent.fix_components_line.setValidator(
+        qtg.QRegularExpressionValidator(
+            qtc.QRegularExpression("^[01](,[01])*$"), parent.fix_components_line
+        )
+    )
+    parent.fix_components_line.setToolTip(
+        "Enter 1/0 per component to fix/update separated by comma (,)"
+    )
+    parent.algorithm_parameters_layout.addWidget(parent.fix_components_line, 1,0)
+
+    parent.fix_weights_line = qtw.QLineEdit()
+    parent.fix_weights_line.setValidator(
+        qtg.QRegularExpressionValidator(
+            qtc.QRegularExpression("^[01](,[01])*$"), parent.fix_weights_line
+        )
+    )
+    parent.fix_weights_line.setToolTip(
+        "Enter 1/0 per weight to fix/update separated by comma (,)"
+    )
+    parent.algorithm_parameters_layout.addWidget(parent.fix_weights_line, 1,1)
+
+    parent.cnmf_max_iter_spinbox = qtw.QSpinBox()
+    parent.cnmf_max_iter_spinbox.setMinimum(1)
+    parent.cnmf_max_iter_spinbox.setMaximum(999999)
+    parent.cnmf_max_iter_spinbox.setValue(2500)
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_max_iter_spinbox, 2,0)
+    parent.cnmf_max_iter_spinbox.setToolTip("[max_iter]\n" \
+    "Maximum number of iterations before timing out")
+
+    parent.cnmf_tol_spinbox = gui_helper.SciSpinBox()
+    parent.cnmf_tol_spinbox.setMinimum(0)
+    parent.cnmf_tol_spinbox.setValue(1e-4)
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_tol_spinbox, 2,1)
+    parent.cnmf_tol_spinbox.setToolTip("[tol]\n" \
+    "Tolerance of the stopping condition")
+
+    parent.cnmf_l1_ratio_spinbox = qtw.QDoubleSpinBox()
+    parent.cnmf_l1_ratio_spinbox.setMinimum(0)
+    parent.cnmf_l1_ratio_spinbox.setMaximum(1)
+    parent.cnmf_l1_ratio_spinbox.setValue(0)
+    parent.cnmf_l1_ratio_spinbox.setSingleStep(0.05)
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_l1_ratio_spinbox, 3,0)
+    parent.cnmf_l1_ratio_spinbox.setToolTip("[l1_ratio]\n" \
+    "Regularization mixing parameter:\n" \
+    "(0, default): elementwise L2 penalty aka. Frobenius Norm\n"
+    "(1): elementwwise L1 penalty (better for sparseness)\n")
+
+    parent.cnmf_alpha_spinbox = qtw.QDoubleSpinBox()
+    parent.cnmf_alpha_spinbox.setMinimum(0)
+    parent.cnmf_alpha_spinbox.setMaximum(10)
+    parent.cnmf_alpha_spinbox.setValue(0)
+    parent.cnmf_alpha_spinbox.setDecimals(5)
+    parent.cnmf_alpha_spinbox.setSingleStep(0.00005)
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_alpha_spinbox, 3,1)
+    parent.cnmf_alpha_spinbox.setToolTip(
+        "[alpha]\n"
+        "Constant that multiplies the l1/l2 regularization (components and weights):\n"
+        "(Regularization is a penalty term to constrain parameter"
+        "complexity and reduce overfitting)\n"
+        "0 (default) means no regularization"
+    )
+
+    parent.cnmf_beta_spinbox = qtw.QDoubleSpinBox()
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_beta_spinbox, 3,2)
+    parent.cnmf_beta_spinbox.setValue(1)
+    parent.cnmf_beta_spinbox.setToolTip(
+        "[beta]\n"
+        "Value for beta divergence:\n"
+        "0: Itakura-Saito\n"
+        "1 (default): Kullback-Leibler\n"
+        "2: squared Euclidean distance"
+    )
+
+    parent.cnmf_rescale_checkbox = qtw.QCheckBox("Rescale")
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_rescale_checkbox, 2,2)
+    parent.cnmf_rescale_checkbox.setToolTip(
+        "Visually rescales scores to sum to 1 for clarity\n"
+        "Note: This does not affect the exported scores, and does not inversely scale components"
+    )
+
+    # Ignored NMF parmeters:
+    # random_state
+    # shuffle
+
+    parent.cnmf_algorithm_widgets = [
+        parent.fix_components_line, parent.fix_weights_line,
+        parent.cnmf_max_iter_spinbox, parent.cnmf_tol_spinbox,
+        parent.cnmf_l1_ratio_spinbox, parent.cnmf_beta_spinbox,
+        parent.cnmf_alpha_spinbox, parent.cnmf_rescale_checkbox
+    ]
+
+
 def display_algorithm_widgets(parent):
     """
     Shows/hides widgets based on chosen algorithm
@@ -426,7 +530,8 @@ def display_algorithm_widgets(parent):
         parent.pca_algorithm_widgets +
         parent.nmf_algorithm_widgets +
         parent.ica_algorithm_widgets +
-        parent.snmf_algorithm_widgets
+        parent.snmf_algorithm_widgets +
+        parent.cnmf_algorithm_widgets
     ):
         widget.hide()
 
@@ -455,6 +560,7 @@ def display_algorithm_widgets(parent):
             parent.verbose_checkbox.show()
             parent.exp_win_checkbox.show()
             parent.init_guess_checkbox.show()
+            parent.init_guess_checkbox.setEnabled(True)
             for widget in parent.nmf_algorithm_widgets:
                 widget.show()
             if parent.nmf_solver_dropdown.currentText()=='mu':
@@ -470,4 +576,10 @@ def display_algorithm_widgets(parent):
             parent.calc_err_checkbox.show()
             parent.verbose_checkbox.show()
             for widget in parent.snmf_algorithm_widgets:
+                widget.show()
+        case "CNMF":
+            parent.init_guess_checkbox.show()
+            parent.init_guess_checkbox.setChecked(True)
+            parent.init_guess_checkbox.setDisabled(True)
+            for widget in parent.cnmf_algorithm_widgets:
                 widget.show()

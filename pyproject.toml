@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "BaSSET-UiO"
-version = "1.4.4a"
+version = "1.5.0a"
 dependencies = [
     "natsort",
     "numpy",
     "matplotlib",
     "PyQt6",
     "scikit-learn",
-    "diffpy.stretched-nmf"
+    "diffpy.stretched-nmf",
+    "constrained-matrix-factorization"
 ]
 requires-python = ">=3.11"
 authors = [{name="Eira Tiberg North", email="erlendtn@uio.no"}]
