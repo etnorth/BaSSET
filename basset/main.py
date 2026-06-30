@@ -257,7 +257,7 @@ class MainWindow(qtw.QMainWindow):
         ############################
         ##### Calculate errors #####
         ############################
-        self.calc_err_checkbox = qtw.QCheckBox("Calculate Errors")
+        self.calc_err_checkbox = qtw.QCheckBox("Calculate errors")
         self.calc_err_checkbox.setChecked(True)
         self.calc_err_checkbox.setToolTip(
             "Calculates errors for 1 to 10 components "
@@ -384,6 +384,7 @@ class MainWindow(qtw.QMainWindow):
         self.exp_win_sublayout.addWidget(self.exp_win_comps_label, 0,0)
 
         self.exp_win_comps_line = qtw.QLineEdit()
+        self.exp_win_comps_line.setPlaceholderText("1,3,4, ...")
         self.exp_win_comps_line.setValidator(
             qtg.QRegularExpressionValidator(
                 qtc.QRegularExpression("^[0-9]+(,[0-9]+)*$"), self.exp_win_comps_line
@@ -399,6 +400,7 @@ class MainWindow(qtw.QMainWindow):
         self.exp_win_sublayout.addWidget(self.exp_win_custom_label, 1,0)
 
         self.exp_win_custom_line = qtw.QLineEdit()
+        self.exp_win_custom_line.setPlaceholderText("8,15,33, ...")
         self.exp_win_custom_line.setValidator(
             qtg.QRegularExpressionValidator(
                 qtc.QRegularExpression("^[0-9]+(,[0-9]+)*$"), self.exp_win_custom_line
@@ -473,11 +475,18 @@ class MainWindow(qtw.QMainWindow):
         )
         self.algorithm_layout.addWidget(self.cnmf_button, 2,1)
 
+        self.mcrals_button = qtw.QRadioButton("MCR-ALS")
+        self.mcrals_button.setToolTip(
+            "Multivariate Curve Resolution - Alternative Least Squares (pyMCR)"
+        )
+        self.algorithm_layout.addWidget(self.mcrals_button, 2,2)
+
         self.algorithm_group.addButton(self.pca_button)
         self.algorithm_group.addButton(self.nmf_button)
         self.algorithm_group.addButton(self.ica_button)
         self.algorithm_group.addButton(self.snmf_button)
         self.algorithm_group.addButton(self.cnmf_button)
+        self.algorithm_group.addButton(self.mcrals_button)
 
         self.comp_num_layout = qtw.QGridLayout()
         self.grid.addLayout(self.comp_num_layout, 3,1)
@@ -515,7 +524,7 @@ class MainWindow(qtw.QMainWindow):
 
 
         self.algorithm_parameters_layout = qtw.QGridLayout()
-        self.algorithm_parameters_layout.setRowStretch(4,1)
+        self.algorithm_parameters_layout.setRowStretch(6,1)
         self.grid.addLayout(self.algorithm_parameters_layout, 4,1)
 
         self.algorithm_parameters_title = qtw.QLabel("Algorithm Parameters")
@@ -530,6 +539,7 @@ class MainWindow(qtw.QMainWindow):
         gui_algorithms.init_ica_algorithm_widgets(self)
         gui_algorithms.init_snmf_algorithm_widgets(self)
         gui_algorithms.init_cnmf_algorithm_widgets(self)
+        gui_algorithms.init_mcrals_algorithm_widgets(self)
 
         #####################################
         ##### Analysis and plot widgets #####
@@ -604,6 +614,7 @@ class MainWindow(qtw.QMainWindow):
         self.display_layout.addWidget(self.display_recon_label, 1,0)
 
         self.display_recon_line = qtw.QLineEdit()
+        self.display_recon_line.setPlaceholderText("8,15,33, ... (up to) scans")
         self.display_recon_line.setValidator(
             qtg.QRegularExpressionValidator(
                 qtc.QRegularExpression("^[0-9]+(,[0-9]+)*$"), self.display_recon_line
@@ -614,6 +625,7 @@ class MainWindow(qtw.QMainWindow):
             "(empty or missing scans: fills with uniform distribution)"
         )
         self.display_layout.addWidget(self.display_recon_line, 1,1)
+        self.display_layout.setRowStretch(2,1)
 
         self.grid.setColumnStretch(1,1)
         self.grid.setRowStretch(5,1)
@@ -1163,14 +1175,6 @@ class MainWindow(qtw.QMainWindow):
         passes analysis to algorithms,
         and sends results to plotting
         """
-        if self.indir_label.text()=="Select the folder containing your dataset":
-            qtw.QMessageBox.critical(
-                self,
-                "Analysis start-up",
-                "You must set a data file directory!"
-            )
-            return
-
         data = self.preprocess()
         if data is None:
             return
@@ -1215,157 +1219,177 @@ class MainWindow(qtw.QMainWindow):
         errors = None
         lift_factor = 0
         stretch = None
-        match self.algorithm_group.checkedButton().text():
-            case "PCA":
-                fitted, transformed, reconstructed = analysis.PCA_analysis(
-                    intensities,
-                    comp_num=self.comp_num_slider.value(),
-                    whiten=self.pca_whiten_checkbox.isChecked(),
-                    svd_solver=self.pca_solver_dropdown.currentText(),
-                    tol=self.pca_tol_spinbox.value(),
-                    iterated_power=(
-                        'auto'
-                        if self.pca_iterated_power_auto_checkbox.isChecked
-                        else self.pca_iterated_power_spinbox.value()
-                    ),
-                    n_oversamples=self.pca_n_oversampled_spinbox.value(),
-                    power_iteration_normalizer=(
-                        self.pca_power_iteration_normalizer_dropdown.currentText()
+        try:
+            match self.algorithm_group.checkedButton().text():
+                case "PCA":
+                    fitted, transformed, reconstructed = analysis.PCA_analysis(
+                        intensities,
+                        comp_num=self.comp_num_slider.value(),
+                        whiten=self.pca_whiten_checkbox.isChecked(),
+                        svd_solver=self.pca_solver_dropdown.currentText(),
+                        tol=self.pca_tol_spinbox.value(),
+                        iterated_power=(
+                            'auto'
+                            if self.pca_iterated_power_auto_checkbox.isChecked()
+                            else self.pca_iterated_power_spinbox.value()
+                        ),
+                        n_oversamples=self.pca_n_oversampled_spinbox.value(),
+                        power_iteration_normalizer=(
+                            self.pca_power_iteration_normalizer_dropdown.currentText()
+                        )
                     )
-                )
-            case "NMF":
-                fitted, transformed, reconstructed, errors, lift_factor = analysis.NMF_analysis(
-                    intensities,
-                    comp_num=self.comp_num_slider.value(),
-                    init=self.nmf_init_dropdown.currentText(),
-                    solver=self.nmf_solver_dropdown.currentText(),
-                    beta_loss=(
-                        self.nmf_beta_loss_dropdown.currentText()
-                        if self.nmf_solver_dropdown.currentText()=="mu"
-                        else "frobenius"
-                    ), # Handles 'cd' solver not being compatible with non-frobenius beta_loss
-                    tol=self.nmf_tol_spinbox.value(),
-                    max_iter=self.nmf_max_iter_spinbox.value(),
-                    alpha_W=self.nmf_alpha_w_spinbox.value(),
-                    alpha_H=(
-                        'same'
-                        if self.nmf_alpha_h_same_checkbox.isChecked()
-                        else self.nmf_alpha_h_spinbox.value()
-                    ),
-                    l1_ratio=self.nmf_l1_ratio_spinbox.value(),
-                    calc_err=self.calc_err_checkbox.isChecked(),
-                    exp_win={
-                        'enable': self.exp_win_checkbox.isChecked(),
-                        'do_custom': self.exp_win_custom_checkbox.isChecked(),
-                        'num_win': self.exp_win_num_spinbox.value(),
-                        'comps': np.fromstring(
-                            self.exp_win_comps_line.text(),
-                            dtype=int,
-                            sep=','
+                case "NMF":
+                    fitted, transformed, reconstructed, errors, lift_factor = analysis.NMF_analysis(
+                        intensities,
+                        comp_num=self.comp_num_slider.value(),
+                        init=self.nmf_init_dropdown.currentText(),
+                        solver=self.nmf_solver_dropdown.currentText(),
+                        beta_loss=(
+                            self.nmf_beta_loss_dropdown.currentText()
+                            if self.nmf_solver_dropdown.currentText()=="mu"
+                            else "frobenius"
+                        ), # Handles 'cd' solver not being compatible with non-frobenius beta_loss
+                        tol=self.nmf_tol_spinbox.value(),
+                        max_iter=self.nmf_max_iter_spinbox.value(),
+                        alpha_W=self.nmf_alpha_w_spinbox.value(),
+                        alpha_H=(
+                            'same'
+                            if self.nmf_alpha_h_same_checkbox.isChecked()
+                            else self.nmf_alpha_h_spinbox.value()
                         ),
-                        'win_custom': np.fromstring(
-                            self.exp_win_custom_line.text(),
-                            dtype=int,
-                            sep=','
-                        )
-                    },
-                    W = (
-                        init_scores
-                        if (
-                            self.init_guess_label.text()
-                            != "Select a folder with initial guess at solution"
-                        )
-                        else None
-                    ),
-                    H = (
-                        init_components
-                        if (
-                            self.init_guess_label.text()
-                            != "Select a folder with initial guess at solution"
-                        )
-                        else None
-                    ),
-                    verbose=(1 if self.verbose_checkbox.isChecked() else 0)
-                )
-            case "ICA":
-                fitted, transformed, reconstructed = analysis.ICA_analysis(
-                    intensities,
-                    comp_num=self.comp_num_slider.value(),
-                    algorithm=self.ica_algorithm_dropdown.currentText(),
-                    whiten=(
-                        False
-                        if self.ica_whiten_dropdown.currentText()=='False'
-                        else self.ica_whiten_dropdown.currentText()
-                    ),
-                    fun=self.ica_fun_dropdown.currentText(),
-                    max_iter=self.ica_max_iter_spinbox.value(),
-                    tol=self.ica_tol_spinbox.value(),
-                    whiten_solver=self.ica_whiten_solver_dropdown.currentText()
-                )
-            case "SNMF":
-                fitted, transformed, reconstructed, errors, stretch = analysis.SNMF_analysis(
-                    intensities,
-                    comp_num=self.comp_num_slider.value(),
-                    min_iter=self.snmf_min_iter_spinbox.value(),
-                    max_iter=self.snmf_max_iter_spinbox.value(),
-                    tol=self.snmf_tol_spinbox.value(),
-                    rho=self.snmf_rho_spinbox.value(),
-                    eta=self.snmf_eta_spinbox.value(),
-                    calc_err=self.calc_err_checkbox.isChecked(),
-                    verbose=self.verbose_checkbox.isChecked()
-                )
-            case "CNMF":
-                fitted, transformed, reconstructed, errors, lift_factor = analysis.CNMF_analysis(
-                    intensities,
-                    comp_num=self.comp_num_slider.value(),
-                    beta=self.cnmf_beta_spinbox.value(),
-                    tol=self.cnmf_tol_spinbox.value(),
-                    max_iter=self.cnmf_max_iter_spinbox.value(),
-                    alpha=self.cnmf_alpha_spinbox.value(),
-                    l1_ratio=self.cnmf_l1_ratio_spinbox.value(),
-                    calc_err=self.calc_err_checkbox.isChecked(),
-                    exp_win={
-                        'enable': self.exp_win_checkbox.isChecked(),
-                        'do_custom': self.exp_win_custom_checkbox.isChecked(),
-                        'num_win': self.exp_win_num_spinbox.value(),
-                        'comps': np.fromstring(
-                            self.exp_win_comps_line.text(),
-                            dtype=int,
-                            sep=','
+                        l1_ratio=self.nmf_l1_ratio_spinbox.value(),
+                        calc_err=self.calc_err_checkbox.isChecked(),
+                        exp_win={
+                            'enable': self.exp_win_checkbox.isChecked(),
+                            'do_custom': self.exp_win_custom_checkbox.isChecked(),
+                            'num_win': self.exp_win_num_spinbox.value(),
+                            'comps': np.fromstring(
+                                self.exp_win_comps_line.text(),
+                                dtype=int,
+                                sep=','
+                            ),
+                            'win_custom': np.fromstring(
+                                self.exp_win_custom_line.text(),
+                                dtype=int,
+                                sep=','
+                            )
+                        },
+                        W = (
+                            init_scores
+                            if (
+                                self.init_guess_label.text()
+                                != "Select a folder with initial guess at solution"
+                            )
+                            else None
                         ),
-                        'win_custom': np.fromstring(
-                            self.exp_win_custom_line.text(),
+                        H = (
+                            init_components
+                            if (
+                                self.init_guess_label.text()
+                                != "Select a folder with initial guess at solution"
+                            )
+                            else None
+                        ),
+                        verbose=(1 if self.verbose_checkbox.isChecked() else 0)
+                    )
+                case "ICA":
+                    fitted, transformed, reconstructed = analysis.ICA_analysis(
+                        intensities,
+                        comp_num=self.comp_num_slider.value(),
+                        algorithm=self.ica_algorithm_dropdown.currentText(),
+                        whiten=(
+                            False
+                            if self.ica_whiten_dropdown.currentText()=='False'
+                            else self.ica_whiten_dropdown.currentText()
+                        ),
+                        fun=self.ica_fun_dropdown.currentText(),
+                        max_iter=self.ica_max_iter_spinbox.value(),
+                        tol=self.ica_tol_spinbox.value(),
+                        whiten_solver=self.ica_whiten_solver_dropdown.currentText()
+                    )
+                case "SNMF":
+                    fitted, transformed, reconstructed, errors, stretch = analysis.SNMF_analysis(
+                        intensities,
+                        comp_num=self.comp_num_slider.value(),
+                        min_iter=self.snmf_min_iter_spinbox.value(),
+                        max_iter=self.snmf_max_iter_spinbox.value(),
+                        tol=self.snmf_tol_spinbox.value(),
+                        rho=self.snmf_rho_spinbox.value(),
+                        eta=self.snmf_eta_spinbox.value(),
+                        calc_err=self.calc_err_checkbox.isChecked(),
+                        verbose=self.verbose_checkbox.isChecked()
+                    )
+                case "CNMF":
+                    fitted, transformed, reconstructed, errors,lift_factor = analysis.CNMF_analysis(
+                        intensities,
+                        comp_num=self.comp_num_slider.value(),
+                        beta=self.cnmf_beta_spinbox.value(),
+                        tol=self.cnmf_tol_spinbox.value(),
+                        max_iter=self.cnmf_max_iter_spinbox.value(),
+                        alpha=self.cnmf_alpha_spinbox.value(),
+                        l1_ratio=self.cnmf_l1_ratio_spinbox.value(),
+                        calc_err=self.calc_err_checkbox.isChecked(),
+                        exp_win={
+                            'enable': self.exp_win_checkbox.isChecked(),
+                            'do_custom': self.exp_win_custom_checkbox.isChecked(),
+                            'num_win': self.exp_win_num_spinbox.value(),
+                            'comps': np.fromstring(
+                                self.exp_win_comps_line.text(),
+                                dtype=int,
+                                sep=','
+                            ),
+                            'win_custom': np.fromstring(
+                                self.exp_win_custom_line.text(),
+                                dtype=int,
+                                sep=','
+                            )
+                        },
+                        W = init_scores,
+                        W_fix=list(np.fromstring(
+                            self.cnmf_fix_weights_line.text(),
+                            dtype=bool,
+                            sep=','
+                        )) if self.cnmf_fix_weights_line.text() else [],
+                        H = init_components,
+                        H_fix=list(np.fromstring(
+                            self.cnmf_fix_components_line.text(),
+                            dtype=bool,
+                            sep=','
+                        )) if self.cnmf_fix_components_line.text() else []
+                    )
+                case "MCR-ALS":
+                    fitted, transformed,reconstructed,errors,lift_factor = analysis.MCRALS_analysis(
+                        intensities,
+                        comp_num=self.comp_num_slider.value(),
+                        C = init_scores,
+                        c_fix=list(np.fromstring(
+                            self.mcrals_fix_weights_line.text(),
                             dtype=int,
                             sep=','
-                        )
-                    },
-                    W = (
-                        init_scores
-                        if (
-                            self.init_guess_label.text()
-                            != "Select a folder with initial guess at solution"
-                        )
-                        else None
-                    ),
-                    W_fix=list(np.fromstring(
-                        self.fix_weights_line.text(),
-                        dtype=bool,
-                        sep=','
-                    )) if self.fix_weights_line.text() else [],
-                    H = (
-                        init_components
-                        if (
-                            self.init_guess_label.text()
-                            != "Select a folder with initial guess at solution"
-                        )
-                        else None
-                    ),
-                    H_fix=list(np.fromstring(
-                        self.fix_components_line.text(),
-                        dtype=bool,
-                        sep=','
-                    )) if self.fix_components_line.text() else []
-                )
+                        )-1) if self.mcrals_fix_weights_line.text() else None, # count from zero
+                        ST = init_components,
+                        st_fix=list(np.fromstring(
+                            self.mcrals_fix_components_line.text(),
+                            dtype=int,
+                            sep=','
+                        )-1) if self.mcrals_fix_components_line.text() else None, # count from zero
+                        max_iter=self.mcrals_max_iter_spinbox.value(),
+                        tol_increase=self.mcrals_tol_inc_spinbox.value(),
+                        tol_n_increase=self.mcrals_tol_n_inc_spinbox.value(),
+                        tol_err_change=self.mcrals_tol_err_spinbox.value(),
+                        tol_n_above_min=self.mcrals_tol_n_abv_min_spinbox.value(),
+                        init_type=self.mcrals_init_type_dropdown.currentText(),
+                        verbose=self.verbose_checkbox.isChecked()
+                    )
+        except ValueError as e:
+            qtw.QMessageBox.critical(
+                self,
+                "Analysis",
+                "Could not perform analysis.\n\n"
+                f"Details:\n{type(e).__name__}: {e}"
+            )
+            print("Analysis halted")
+            return
 
         print("Analysis completed\n")
 
@@ -1690,6 +1714,10 @@ class MainWindow(qtw.QMainWindow):
                         "! Be aware that stretching uses division, "
                         "not multiplication (component / stretch) !"
                     )
+                case "CNMF":
+                    pass
+                case "MCR-ALS":
+                    pass
 
             if errors is not None:
                 outfile.write(
@@ -1698,7 +1726,7 @@ class MainWindow(qtw.QMainWindow):
                     f"{errors[self.comp_num_slider.value()+1]:.2f}\n"
                 )
 
-            outfile.write("\nPerformed using BaSSET v1.5.0a")
+            outfile.write("\nPerformed using BaSSET v1.6.0a")
 
         print("Summary written")
 

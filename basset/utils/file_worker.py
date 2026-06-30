@@ -28,7 +28,7 @@ def most_common_filetype(indir: str, verbose=True):
         Most common filetype in directory
     """
     if len(glob(f"{indir}*")) == 0:
-        print(f"\tFound {len(glob(f"{indir}*"))} files in {indir}")
+        print(f"\tFound {len(glob(f"{indir}*"))} files in \"{indir[-41:-1]}\"")
         return None
     filetypes = {}
     for file_extension in [os.path.splitext(filename)[-1] for filename in glob(f"{indir}*")]:
@@ -41,14 +41,17 @@ def most_common_filetype(indir: str, verbose=True):
     # Checks if there are multiple equally popular file extensions
     popular_filetypes = [key for key, value in filetypes.items() if value == filetypes[filetype]]
     popular_filetypes = [x for x in popular_filetypes if x] # Removes empty strings (aka. folders)
-    if len(popular_filetypes)>1:
+    if len(popular_filetypes)==0:
+        print(f"\t\"{indir[-41:-1]}\" does not contain any files")
+        return None
+    elif len(popular_filetypes)>1:
         print(
             f"Multiple equally popular filetypes found: ({popular_filetypes}).\n"
             f"Assuming {filetype}. If unwanted, check dir and re-run"
         )
 
     if verbose:
-        print(f"\tMost common filetype: {filetype}")
+        print(f"\tMost common filetype: \"{filetype}\"")
 
     return filetype
 
@@ -134,6 +137,10 @@ def import_dataset(indir: str):
         2D array of shape (samples, features) containing intensity for each given angle in dataset
     """
     print("Importing dataset")
+    
+    if not os.path.isdir(indir):
+        raise FileNotFoundError(f"\"{indir}\" is not an existing directory")
+    
     if not indir.endswith(os.path.sep):
         indir += os.path.sep
 
@@ -196,42 +203,51 @@ def import_init_guess(indir: str):
 
     """
     print("Importing initial guess")
+
+    if not os.path.isdir(indir):
+        raise FileNotFoundError(f"\"{indir}\" is not an existing directory")
+
+
     if not indir.endswith(os.path.sep):
         indir += os.path.sep
 
     filetype = most_common_filetype(indir)
 
-    print(f"\tLooking for component files in \"...{indir[-41:-1]}\" of type {filetype}")
+    print(f"\tLooking for component files in \"...{indir[-41:-1]}\" of type \"{filetype}\"")
     filenames = natsorted(glob(f"{indir}*{filetype}"))
-    print(f"\tFound {len(filenames)} files of filetype {filetype}")
+    print(f"\tFound {len(filenames)} files of filetype \"{filetype}\"")
 
     if len(filenames)==0:
-        print("No components found, will initialize according to algorithm parameters")
+        print("\tNo components found, will initialize according to algorithm parameters")
         init_components = None
-    elif len(filenames)==1:
-        print("Assuming singular file is scores, not component")
+    elif len(filenames)==1 and filetype==".csv":
+        print(f"\tAssuming singular {filetype} file is scores, not component")
         init_components = None
     else:
+        if "scores.csv" in filenames:
+            print("\tRemoved file \"scores.csv\" from among components")
+            filenames.remove("scores.csv")
         init_components = []
         for filename in filenames:
             _, y = import_data(filename)
             init_components.append(y)
         init_components = np.array(init_components)
-        print(f"Imported {len(init_components)} components")
+        print(f"\tImported {len(init_components)} components")
 
-    print("Looking for scores file")
+    print("\tLooking for scores file")
     scoresfile = glob(f"{indir}*.csv")
 
     if len(scoresfile) > 1:
-        raise ValueError(f"Expected 1 file of type csv, but found {len(scoresfile)}")
+        raise ValueError(f"Expected 1 file of type .csv, but found {len(scoresfile)}")
 
     if len(scoresfile)==0:
-        print("No scores found, will initialize according to algorithm parameters")
+        print("\tNo scores found, will initialize according to algorithm parameters")
         init_scores = None
     else:
         init_scores = np.loadtxt(scoresfile[0], skiprows=1, delimiter=',')
-        print("Scores imported")
+        print("\tScores imported")
 
+    print("Initial guess imported")
     return init_components, init_scores
 
 def write_components(angles, results_path, fitted):

@@ -2,6 +2,8 @@
 Module containing algorithm calls for BaSSET's data analysis
 """
 # pylint: disable=invalid-name
+import sys
+import logging
 
 import numpy as np
 import torch
@@ -9,6 +11,7 @@ from sklearn.decomposition import PCA, NMF, FastICA
 from sklearn.decomposition._nmf import _initialize_nmf
 from diffpy.stretched_nmf.snmf_class import SNMFOptimizer, _reconstruct_matrix
 from constrainedmf.nmf.models import NMF as CNMF
+from pymcr.mcr import McrAR
 
 class ComponentsResult:
     """
@@ -19,24 +22,26 @@ class ComponentsResult:
 
 
 def PCA_analysis(intensities, comp_num, *, # pylint: disable=unused-argument
-                 whiten,
-                 svd_solver,
-                 tol,
-                 iterated_power,
-                 n_oversamples,
-                 power_iteration_normalizer
+    whiten,
+    svd_solver,
+    tol,
+    iterated_power,
+    n_oversamples,
+    power_iteration_normalizer
 ):
     """
     Calls on sklearn's PCA algorithm and performs a fit to the user's dataset
     """
     n_components = min(10,*np.shape(intensities)) # Uses 10 for reporting explained variances
-    pca_model = PCA(n_components=n_components,
-              whiten=whiten,
-              svd_solver=svd_solver,
-              tol=tol,
-              iterated_power=iterated_power,
-              n_oversamples=n_oversamples,
-              power_iteration_normalizer=power_iteration_normalizer)
+    pca_model = PCA(
+        n_components=n_components,
+        whiten=whiten,
+        svd_solver=svd_solver,
+        tol=tol,
+        iterated_power=iterated_power,
+        n_oversamples=n_oversamples,
+        power_iteration_normalizer=power_iteration_normalizer
+    )
     X = pca_model.fit(intensities)
     transformed = pca_model.transform(intensities)
     reconstructed = pca_model.inverse_transform(transformed)
@@ -44,19 +49,19 @@ def PCA_analysis(intensities, comp_num, *, # pylint: disable=unused-argument
     return X, transformed, reconstructed
 
 def NMF_analysis(intensities, comp_num, *,
-                 init,
-                 solver,
-                 beta_loss,
-                 tol,
-                 max_iter,
-                 alpha_W,
-                 alpha_H,
-                 l1_ratio,
-                 calc_err,
-                 exp_win,
-                 W,
-                 H,
-                 verbose=0
+    init,
+    solver,
+    beta_loss,
+    tol,
+    max_iter,
+    alpha_W,
+    alpha_H,
+    l1_ratio,
+    calc_err,
+    exp_win,
+    W,
+    H,
+    verbose=0
 ):
     """
     Calls on sklearn's NMF algorithm and performs a fit to the user's dataset
@@ -66,17 +71,26 @@ def NMF_analysis(intensities, comp_num, *,
 
     lift_factor = intensities.min()
     if lift_factor < 0:
+        print("\tNegative value found in dataset. Lifting data")
         intensities -= lift_factor
-        print("\tNegative value found in dataset. Lifting data above zero")
+
+    itakura_saito_lift = 0
+    if beta_loss=="itakura-saito" and 0 in intensities:
+        print(
+            "\tItakura-Saito was selected as solver, but may diverge if data contains zeros. "
+            "Adding small value"
+        )
+        itakura_saito_lift = 1e-2
+        intensities += itakura_saito_lift
 
     if (W is not None) ^ (H is not None): # XOR, if both are none, go on, if one is none do this
         print("\tPerforming NMF with initial guesses as warm-start")
         # Expand W and H to appropriate size
         W_expand, H_expand = _initialize_nmf( # Create full-sized W and H for expanding
-                intensities,
-                comp_num,
-                init=init
-            )
+            intensities,
+            comp_num,
+            init=init
+        )
 
         # intensities.shape = (samples, features)
         # W_full.shape = (samples, comp_num)
@@ -102,16 +116,18 @@ def NMF_analysis(intensities, comp_num, *,
                 H = np.vstack([H, H_vcrop])
             # H.shape[1] vs. intensities.shape[1] comparison performed pre function call
 
-        nmf_model = NMF(n_components=comp_num, # initialize with 'custom' for W and H guesses
-                init='custom',
-                solver=solver,
-                beta_loss=beta_loss,
-                tol=tol,
-                max_iter=max_iter,
-                alpha_W=alpha_W,
-                alpha_H=alpha_H,
-                l1_ratio=l1_ratio,
-                verbose=verbose)
+        nmf_model = NMF( # initialize with 'custom' for W and H guesses
+            n_components=comp_num,
+            init='custom',
+            solver=solver,
+            beta_loss=beta_loss,
+            tol=tol,
+            max_iter=max_iter,
+            alpha_W=alpha_W,
+            alpha_H=alpha_H,
+            l1_ratio=l1_ratio,
+            verbose=verbose
+        )
         nmf_model = nmf_model.fit(intensities, W=W, H=H)
         transformed = nmf_model.transform(intensities)
         reconstructed = nmf_model.inverse_transform(transformed)
@@ -127,16 +143,18 @@ def NMF_analysis(intensities, comp_num, *,
 
         for i, n_components in enumerate(n_components_list):
             print(f"Calculating NMF reconstruction error for {n_components} components")
-            nmf_model = NMF(n_components=n_components,
-                      init=init,
-                      solver=solver,
-                      beta_loss=beta_loss,
-                      tol=tol,
-                      max_iter=max_iter,
-                      alpha_W=alpha_W,
-                      alpha_H=alpha_H,
-                      l1_ratio=l1_ratio,
-                      verbose=verbose)
+            nmf_model = NMF(
+                n_components=n_components,
+                init=init,
+                solver=solver,
+                beta_loss=beta_loss,
+                tol=tol,
+                max_iter=max_iter,
+                alpha_W=alpha_W,
+                alpha_H=alpha_H,
+                l1_ratio=l1_ratio,
+                verbose=verbose
+            )
             nmf_model_temp = nmf_model.fit(intensities)
             errors[i] = nmf_model_temp.reconstruction_err_
             print(
@@ -169,16 +187,18 @@ def NMF_analysis(intensities, comp_num, *,
             win_comps = exp_win['comps']
 
         # 'first' iteration outside loop, warm-start inside loop
-        nmf_model = NMF(n_components=win_comps[0],
-                  init=init,
-                  solver=solver,
-                  beta_loss=beta_loss,
-                  tol=tol,
-                  max_iter=max_iter,
-                  alpha_W=alpha_W,
-                  alpha_H=alpha_H,
-                  l1_ratio=l1_ratio,
-                  verbose=verbose)
+        nmf_model = NMF(
+            n_components=win_comps[0],
+            init=init,
+            solver=solver,
+            beta_loss=beta_loss,
+            tol=tol,
+            max_iter=max_iter,
+            alpha_W=alpha_W,
+            alpha_H=alpha_H,
+            l1_ratio=l1_ratio,
+            verbose=verbose
+        )
         nmf_model = nmf_model.fit(intensities[:win_ends[0],:])
         W = nmf_model.transform(intensities[:win_ends[0],:])
         H = nmf_model.components_
@@ -205,16 +225,18 @@ def NMF_analysis(intensities, comp_num, *,
             H_vcrop = H_init[prev_comp:,:] # Get new components (if win_comp=prev_comp stacks None)
             H = np.vstack([H, H_vcrop])
 
-            nmf_model = NMF(n_components=win_comp, # initialize with 'custom' for W and H guesses
-                  init='custom',
-                  solver=solver,
-                  beta_loss=beta_loss,
-                  tol=tol,
-                  max_iter=max_iter,
-                  alpha_W=alpha_W,
-                  alpha_H=alpha_H,
-                  l1_ratio=l1_ratio,
-                  verbose=verbose)
+            nmf_model = NMF( # initialize with 'custom' for W and H guesses
+                n_components=win_comp,
+                init='custom',
+                solver=solver,
+                beta_loss=beta_loss,
+                tol=tol,
+                max_iter=max_iter,
+                alpha_W=alpha_W,
+                alpha_H=alpha_H,
+                l1_ratio=l1_ratio,
+                verbose=verbose
+            )
             nmf_model = nmf_model.fit(win_intensities, W=W, H=H)
             W = nmf_model.transform(win_intensities)
             H = nmf_model.components_
@@ -227,16 +249,18 @@ def NMF_analysis(intensities, comp_num, *,
         reconstructed = nmf_model.inverse_transform(transformed)
 
     else:
-        nmf_model = NMF(n_components=comp_num,
-                  init=init,
-                  solver=solver,
-                  beta_loss=beta_loss,
-                  tol=tol,
-                  max_iter=max_iter,
-                  alpha_W=alpha_W,
-                  alpha_H=alpha_H,
-                  l1_ratio=l1_ratio,
-                  verbose=verbose)
+        nmf_model = NMF(
+            n_components=comp_num,
+            init=init,
+            solver=solver,
+            beta_loss=beta_loss,
+            tol=tol,
+            max_iter=max_iter,
+            alpha_W=alpha_W,
+            alpha_H=alpha_H,
+            l1_ratio=l1_ratio,
+            verbose=verbose
+        )
         nmf_model = nmf_model.fit(intensities)
         transformed = nmf_model.transform(intensities)
         reconstructed = nmf_model.inverse_transform(transformed)
@@ -250,26 +274,33 @@ def NMF_analysis(intensities, comp_num, *,
         nmf_model.components_ += lift_factor
         reconstructed += lift_factor
 
+    if itakura_saito_lift != 0:
+        intensities -= itakura_saito_lift
+        nmf_model.components_ -= itakura_saito_lift
+        reconstructed -= itakura_saito_lift
+
     return nmf_model, transformed, reconstructed, errors, lift_factor
 
 def ICA_analysis(intensities, comp_num, *,
-                 algorithm,
-                 whiten,
-                 fun,
-                 max_iter,
-                 tol,
-                 whiten_solver
+    algorithm,
+    whiten,
+    fun,
+    max_iter,
+    tol,
+    whiten_solver
 ):
     """
     Calls on sklearn's ICA algorithm and performs a fit to the user's dataset
     """
-    ica_model = FastICA(n_components=comp_num,
-                  algorithm=algorithm,
-                  whiten=whiten,
-                  fun=fun,
-                  max_iter=max_iter,
-                  tol=tol,
-                  whiten_solver=whiten_solver)
+    ica_model = FastICA(
+        n_components=comp_num,
+        algorithm=algorithm,
+        whiten=whiten,
+        fun=fun,
+        max_iter=max_iter,
+        tol=tol,
+        whiten_solver=whiten_solver
+    )
     X = ica_model.fit(intensities)
     transformed = ica_model.transform(intensities)
     reconstructed = ica_model.inverse_transform(transformed)
@@ -277,13 +308,13 @@ def ICA_analysis(intensities, comp_num, *,
     return X, transformed, reconstructed
 
 def SNMF_analysis(intensities, comp_num, *,
-                  min_iter,
-                  max_iter,
-                  tol,
-                  rho,
-                  eta,
-                  calc_err,
-                  verbose=False
+    min_iter,
+    max_iter,
+    tol,
+    rho,
+    eta,
+    calc_err,
+    verbose=False
 ):
     """
     Calls on diffpy's stretched-nmf and performs a fit to the user's dataset
@@ -300,14 +331,16 @@ def SNMF_analysis(intensities, comp_num, *,
         errors = np.empty(len(n_components_list))
         for i, n_components in enumerate(n_components_list):
             print(f"Calculating SNMF reconstruction error for {n_components} components")
-            snmf_model = SNMFOptimizer(n_components=n_components,
-                                 min_iter=min_iter,
-                                 max_iter=max_iter,
-                                 tol=tol,
-                                 rho=rho,
-                                 eta=eta,
-                                 show_plots=True,
-                                 verbose=verbose)
+            snmf_model = SNMFOptimizer(
+                n_components=n_components,
+                min_iter=min_iter,
+                max_iter=max_iter,
+                tol=tol,
+                rho=rho,
+                eta=eta,
+                show_plots=True,
+                verbose=verbose
+            )
             X_temp = snmf_model.fit(intensities)
             errors[i] = X_temp.reconstruction_err_
             print(
@@ -320,14 +353,16 @@ def SNMF_analysis(intensities, comp_num, *,
                 stretch = snmf_model.stretch_
                 reconstructed = _reconstruct_matrix(snmf_model.components_, transformed, stretch)
     else:
-        snmf_model = SNMFOptimizer(n_components=comp_num,
-                             min_iter=min_iter,
-                             max_iter=max_iter,
-                             tol=tol,
-                             rho=rho,
-                             eta=eta,
-                             show_plots=True,
-                             verbose=verbose)
+        snmf_model = SNMFOptimizer(
+            n_components=comp_num,
+            min_iter=min_iter,
+            max_iter=max_iter,
+            tol=tol,
+            rho=rho,
+            eta=eta,
+            show_plots=True,
+            verbose=verbose
+        )
         errors = None
         X = snmf_model.fit(intensities)
         transformed = snmf_model.weights_
@@ -349,28 +384,23 @@ def SNMF_analysis(intensities, comp_num, *,
     return X, transformed, reconstructed, errors, stretch
 
 def CNMF_analysis(intensities, comp_num, *,
-                 beta,
-                 tol,
-                 max_iter,
-                 alpha,
-                 l1_ratio,
-                 calc_err,
-                 exp_win,
-                 W,
-                 W_fix,
-                 H,
-                 H_fix
+    beta,
+    tol,
+    max_iter,
+    alpha,
+    l1_ratio,
+    calc_err,
+    exp_win,
+    W,
+    W_fix,
+    H,
+    H_fix
 ):
     """
     Calls on the constrained NMF algorithm and performs a fit to the user's dataset
-    Calculates error for 1-10 components, and if data contains negative values, lifts them
+    If data contains negative values, lifts them
     """
     errors = None
-
-    lift_factor = intensities.min()
-    if lift_factor < 0:
-        intensities -= lift_factor
-        print("\tNegative value found in dataset. Lifting data above zero")
 
     if len(H_fix) > comp_num:
         print(
@@ -387,6 +417,11 @@ def CNMF_analysis(intensities, comp_num, *,
         )
         W_fix = W_fix[:len(intensities)]
 
+    lift_factor = intensities.min()
+    if lift_factor < 0:
+        intensities -= lift_factor
+        print("\tNegative value found in dataset. Lifting data above zero")
+
     if H is not None:
         if lift_factor < 0:
             H -= lift_factor
@@ -398,14 +433,17 @@ def CNMF_analysis(intensities, comp_num, *,
     elif exp_win['enable']:
         pass
     else:"""
-    cnmf_model = CNMF(intensities.shape,
-            n_components=comp_num,
-            initial_components=H,
-            fix_components=H_fix,
-            initial_weights=W,
-            fix_weights=W_fix)
+    cnmf_model = CNMF(
+        intensities.shape,
+        n_components=comp_num,
+        initial_components=H,
+        fix_components=H_fix,
+        initial_weights=W,
+        fix_weights=W_fix
+    )
     loss = cnmf_model.fit(
-        torch.tensor(intensities, dtype=torch.float),
+        torch.tensor(
+        intensities, dtype=torch.float),
         beta=beta,
         tol=tol,
         max_iter=max_iter,
@@ -415,7 +453,7 @@ def CNMF_analysis(intensities, comp_num, *,
     weights, components = cnmf_model.W.detach().numpy(), cnmf_model.H.detach().numpy()
     reconstructed = cnmf_model.reconstruct(components, weights)
     print(
-        f"\tCNMF ({comp_num}) reconstruction error: "
+        f"\tCNMF ({comp_num}) Beta divergence loss: "
         f"{loss[-1]:.6e} in {len(loss)} iterations"
     )
 
@@ -425,3 +463,152 @@ def CNMF_analysis(intensities, comp_num, *,
         reconstructed += lift_factor
 
     return ComponentsResult(components), weights, reconstructed, errors, lift_factor
+
+def MCRALS_analysis(intensities, comp_num, *,
+    C,
+    c_fix,
+    ST,
+    st_fix,
+    #c_regr,
+    #st_regr,
+    #fit_kwargs,
+    #c_fit_kwargs,
+    #st_fit_kwargs,
+    #c_constraints,
+    #st_constraints,
+    max_iter,
+    #err_fcn,
+    tol_increase,
+    tol_n_increase,
+    tol_err_change,
+    tol_n_above_min,
+    init_type,
+    verbose=False
+):
+    """
+    Calls on the MCR-ALS algorithm and performs a fit to the user's dataset
+    """
+    errors = None
+
+    if verbose:
+        logger = logging.getLogger('pymcr')
+        logger.setLevel(logging.DEBUG)
+        stdout_handler = logging.StreamHandler(stream=sys.stdout)
+        stdout_format = logging.Formatter('%(message)s')
+        stdout_handler.setFormatter(stdout_format)
+        logger.addHandler(stdout_handler)
+    if tol_increase<0:
+        tol_increase=None
+    if tol_n_increase<0:
+        tol_n_increase=None
+    if tol_n_above_min<0:
+        tol_n_above_min=None
+
+    lift_factor = intensities.min()
+    if lift_factor < 0:
+        intensities -= lift_factor
+        print("\tNegative value found in dataset. Lifting data above zero")
+
+    C_expand = np.random.rand(intensities.shape[0],comp_num) # (samples, components)
+    ST_expand = np.random.rand(comp_num,intensities.shape[1]) # (components, features)
+
+    # Expand scores
+    if C is None:
+        C = C_expand
+    else:
+        if C.shape[0] < intensities.shape[0]: # Expand samples in guessed scores
+            print(
+                f"\tFewer sample scores than {intensities.shape[0]} were provided. "
+                "Expanding with random"
+            )
+            C_vcrop = C_expand[C.shape[0]:,:]
+            C = np.vstack([C, C_vcrop])
+        if C.shape[1] < comp_num: # Expand components in guessed scores
+            print(f"\tFewer components than {comp_num} were provided. Expanding with random")
+            C_hcrop = C_expand[:,C.shape[1]:]
+            C = np.hstack([C, C_hcrop])
+        elif C.shape[1] > comp_num:
+            raise ValueError(
+                f"Analysis to be done with {comp_num} components, "
+                f"but scores provided {C.shape[1]}"
+            )
+
+    # Expand components
+    if ST is None:
+        ST = ST_expand
+    else:
+        if lift_factor < 0:
+            ST -= lift_factor
+        if ST.shape[0] < comp_num: # Expand components in guessed components
+            print(f"\tFewer components than {comp_num} were provided. Expanding with random")
+            ST_vcrop = ST_expand[ST.shape[0]:,:]
+            ST = np.vstack([ST, ST_vcrop])
+        elif ST.shape[0] > comp_num:
+            raise ValueError(
+                f"Analysis to be done with {comp_num} components, "
+                f"but {ST.shape[0]} were provided"
+            )
+
+    # Set to None depending on given data
+    match init_type:
+        case "Components":
+            C = None
+            c_fix = None
+        case "Scores":
+            ST = None
+            st_fix = None
+        case "Both":
+            if (st_fix is None) or (c_fix is None):
+                raise ValueError(
+                    "Both \"Fix Components\" and \"Fix Scores\" must be provided for \"Both\""
+                )
+
+    if c_fix is not None:
+        if len(c_fix) < intensities.shape[0]: # Fill with up to samples
+            c_fix.extend([0] * (intensities.shape[0]-len(c_fix)))
+
+    if st_fix is not None:
+        if len(st_fix) < comp_num: # Fill with zero up to comp_num
+            st_fix.extend([0] * (comp_num-len(st_fix)))
+
+    mcrals_model = McrAR(
+        #c_regr,
+        #st_regr,
+        #fit_kwargs,
+        #c_fit_kwargs,
+        #st_fit_kwargs,
+        #c_constraints,
+        #st_constraints,
+        max_iter=max_iter,
+        #err_fcn,
+        tol_increase=tol_increase,
+        tol_n_increase=tol_n_increase,
+        tol_err_change=tol_err_change,
+        tol_n_above_min=tol_n_above_min
+    )
+
+    mcrals_model.fit(
+         intensities,
+         C=C,
+         c_fix=c_fix,
+         ST=ST,
+         st_fix=st_fix,
+         c_first=True,
+         verbose=verbose,
+         post_iter_fcn=None,
+         post_half_fcn=None
+    )
+
+    transformed = mcrals_model.C_
+    reconstructed = mcrals_model.D_
+    print(
+        f"\tMCR-ALS ({comp_num}) calculted error: "
+        f"{mcrals_model.err[-1]:.6e} in {mcrals_model.n_iter} iterations"
+    )
+
+    if lift_factor < 0: # Lower data below zero again
+        intensities += lift_factor
+        mcrals_model.ST_ += lift_factor # components
+        reconstructed += lift_factor
+
+    return mcrals_model, transformed, reconstructed, errors, lift_factor

@@ -132,9 +132,31 @@ def init_nmf_algorithm_widgets(parent):
     parent: QMainWindow
         Window to anchor widgets to
     """
+    parent.nmf_max_iter_spinbox = qtw.QSpinBox()
+    parent.nmf_max_iter_spinbox.setMinimum(1)
+    parent.nmf_max_iter_spinbox.setMaximum(999999)
+    parent.nmf_max_iter_spinbox.setValue(2500)
+    parent.algorithm_parameters_layout.addWidget(parent.nmf_max_iter_spinbox, 1,0)
+    parent.nmf_max_iter_spinbox.setToolTip("[max_iter]\n" \
+    "Maximum number of iterations before timing out")
+
+    parent.nmf_tol_spinbox = gui_helper.SciSpinBox()
+    parent.nmf_tol_spinbox.setMinimum(0)
+    parent.nmf_tol_spinbox.setValue(1e-4)
+    parent.algorithm_parameters_layout.addWidget(parent.nmf_tol_spinbox, 1,1)
+    parent.nmf_tol_spinbox.setToolTip("[tol]\n" \
+    "Tolerance of the stopping condition")
+
+    parent.nmf_rescale_checkbox = qtw.QCheckBox("Rescale")
+    parent.algorithm_parameters_layout.addWidget(parent.nmf_rescale_checkbox, 1,2)
+    parent.nmf_rescale_checkbox.setToolTip(
+        "Visually rescales scores to sum to 1 for clarity\n"
+        "Note: This does not affect the exported scores, and does not inversely scale components"
+    )
+
     parent.nmf_init_dropdown = qtw.QComboBox()
     parent.nmf_init_dropdown.addItems(["nndsvda", "random", "nndsvd", "nndsvdar"])
-    parent.algorithm_parameters_layout.addWidget(parent.nmf_init_dropdown, 1,0)
+    parent.algorithm_parameters_layout.addWidget(parent.nmf_init_dropdown, 2,0)
     parent.nmf_init_dropdown.setToolTip("[init]\n" \
     "Method used to initialize the procedure:\n" \
     "('nndsvda' is recommended for PDF and 'nndsvd' is recommended for XRD)\n" \
@@ -145,50 +167,18 @@ def init_nmf_algorithm_widgets(parent):
 
     parent.nmf_solver_dropdown = qtw.QComboBox()
     parent.nmf_solver_dropdown.addItems(["cd", "mu"])
-    parent.algorithm_parameters_layout.addWidget(parent.nmf_solver_dropdown, 1,1)
+    parent.algorithm_parameters_layout.addWidget(parent.nmf_solver_dropdown, 2,1)
     parent.nmf_solver_dropdown.setToolTip("[solver]\n" \
     "Numerical solver to use:\n" \
     "cd (default): Coordinate Descent\n" \
     "mu: Multiplicative Update\n" \
     "('mu' gives poor results with 'nndsvd' as it cannot update zeros in initialization)")
 
-    parent.nmf_max_iter_spinbox = qtw.QSpinBox()
-    parent.nmf_max_iter_spinbox.setMinimum(1)
-    parent.nmf_max_iter_spinbox.setMaximum(999999)
-    parent.nmf_max_iter_spinbox.setValue(2500)
-    parent.algorithm_parameters_layout.addWidget(parent.nmf_max_iter_spinbox, 2,0)
-    parent.nmf_max_iter_spinbox.setToolTip("[max_iter]\n" \
-    "Maximum number of iterations before timing out")
-
-    parent.nmf_tol_spinbox = gui_helper.SciSpinBox()
-    parent.nmf_tol_spinbox.setMinimum(0)
-    parent.nmf_tol_spinbox.setValue(1e-4)
-    parent.algorithm_parameters_layout.addWidget(parent.nmf_tol_spinbox, 2,1)
-    parent.nmf_tol_spinbox.setToolTip("[tol]\n" \
-    "Tolerance of the stopping condition")
-
-    # Used in 'cd' solver
-    parent.nmf_l1_ratio_spinbox = qtw.QDoubleSpinBox()
-    parent.nmf_l1_ratio_spinbox.setMinimum(0)
-    parent.nmf_l1_ratio_spinbox.setMaximum(1)
-    parent.nmf_l1_ratio_spinbox.setValue(0)
-    parent.nmf_l1_ratio_spinbox.setSingleStep(0.05)
-    parent.algorithm_parameters_layout.addWidget(parent.nmf_l1_ratio_spinbox, 1,2)
-    parent.nmf_l1_ratio_spinbox.setToolTip("[l1_ratio]\n" \
-    "Regularization mixing parameter:\n" \
-    "(0, default): elementwise L2 penalty aka. Frobenius Norm\n"
-    "(1): elementwwise L1 penalty (better for sparseness)\n")
-    parent.nmf_solver_dropdown.currentTextChanged.connect(
-        lambda currentText: parent.nmf_l1_ratio_spinbox.show()
-        if currentText=='cd'
-        else parent.nmf_l1_ratio_spinbox.hide()
-    )
-
     # Only for 'mu' solver
     parent.nmf_beta_loss_dropdown = qtw.QComboBox()
     # "itakura-saito" not included. Cannot have zeros, which XRD/PDF often has
-    parent.nmf_beta_loss_dropdown.addItems(["frobenius", "kullback-leibler"])
-    parent.algorithm_parameters_layout.addWidget(parent.nmf_beta_loss_dropdown, 1,2)
+    parent.nmf_beta_loss_dropdown.addItems(["frobenius", "kullback-leibler", "itakura-saito"])
+    parent.algorithm_parameters_layout.addWidget(parent.nmf_beta_loss_dropdown, 2,2)
     parent.nmf_beta_loss_dropdown.setToolTip("[beta_loss]\n" \
     "Beta divergence to be minimized," \
     "measuring the distance between X and the dot product WH using 'mu':\n" \
@@ -228,7 +218,7 @@ def init_nmf_algorithm_widgets(parent):
 
     parent.nmf_alpha_h_same_checkbox = qtw.QCheckBox("same")
     parent.nmf_alpha_h_same_checkbox.setChecked(True)
-    parent.algorithm_parameters_layout.addWidget(parent.nmf_alpha_h_same_checkbox, 3,2)
+    parent.algorithm_parameters_layout.addWidget(parent.nmf_alpha_h_same_checkbox, 4,1)
     parent.nmf_alpha_h_same_checkbox.setToolTip("[alpha_H]\n" \
     "Use same regularization constant for features and mixing")
     parent.nmf_alpha_h_same_checkbox.clicked.connect(
@@ -244,12 +234,17 @@ def init_nmf_algorithm_widgets(parent):
         else None
     )
 
-    parent.nmf_rescale_checkbox = qtw.QCheckBox("Rescale")
-    parent.algorithm_parameters_layout.addWidget(parent.nmf_rescale_checkbox, 2,2)
-    parent.nmf_rescale_checkbox.setToolTip(
-        "Visually rescales scores to sum to 1 for clarity\n"
-        "Note: This does not affect the exported scores, and does not inversely scale components"
-    )
+    # Used in 'cd' solver. HAS EFFECT FOR 'mu' AS WELL
+    parent.nmf_l1_ratio_spinbox = qtw.QDoubleSpinBox()
+    parent.nmf_l1_ratio_spinbox.setMinimum(0)
+    parent.nmf_l1_ratio_spinbox.setMaximum(1)
+    parent.nmf_l1_ratio_spinbox.setValue(0)
+    parent.nmf_l1_ratio_spinbox.setSingleStep(0.05)
+    parent.algorithm_parameters_layout.addWidget(parent.nmf_l1_ratio_spinbox, 3,2)
+    parent.nmf_l1_ratio_spinbox.setToolTip("[l1_ratio]\n" \
+    "Regularization mixing parameter:\n" \
+    "(0, default): elementwise L2 penalty aka. Frobenius Norm\n"
+    "(1): elementwwise L1 penalty. (better for sparseness)\n")
 
     # Ignored NMF parmeters:
     # random_state
@@ -272,37 +267,18 @@ def init_ica_algorithm_widgets(parent):
     parent: QMainWindow
         Window to anchor widgets to
     """
-    parent.ica_algorithm_dropdown = qtw.QComboBox()
-    parent.ica_algorithm_dropdown.addItems(['parallel', 'deflation'])
-    parent.algorithm_parameters_layout.addWidget(parent.ica_algorithm_dropdown, 1,0)
-    parent.ica_algorithm_dropdown.setToolTip("[algorithm]\n" \
-    "Specify which algorithm to use:\n" \
-    "parallel is default")
-
-    parent.ica_whiten_dropdown = qtw.QComboBox()
-    parent.ica_whiten_dropdown.addItems(['unit-variance', 'arbitrary-variance', 'False'])
-    parent.algorithm_parameters_layout.addWidget(parent.ica_whiten_dropdown, 1,1)
-    parent.ica_whiten_dropdown.setToolTip(
-        "[whiten]\n"
-        "Whitening strategy to use. False means no whitening:\n"
-        "unit-variance (default): the whitening matrix is rescaled"
-        "to ensure each recovered source has unit variance\n"
-        "arbitrary-variance: a whitening with variance arbitrary is used\n"
-        "False: Data is considered whitened and no whitening is performed"
-    )
-
     parent.ica_max_iter_spinbox = qtw.QSpinBox()
     parent.ica_max_iter_spinbox.setMinimum(1)
     parent.ica_max_iter_spinbox.setMaximum(999999)
     parent.ica_max_iter_spinbox.setValue(2500)
-    parent.algorithm_parameters_layout.addWidget(parent.ica_max_iter_spinbox, 2,0)
+    parent.algorithm_parameters_layout.addWidget(parent.ica_max_iter_spinbox, 1,0)
     parent.ica_max_iter_spinbox.setToolTip("[max_iter]\n" \
     "Maximum number of iterations during fit")
 
     parent.ica_tol_spinbox = gui_helper.SciSpinBox()
     parent.ica_tol_spinbox.setMinimum(0)
     parent.ica_tol_spinbox.setValue(1e-4)
-    parent.algorithm_parameters_layout.addWidget(parent.ica_tol_spinbox, 2,1)
+    parent.algorithm_parameters_layout.addWidget(parent.ica_tol_spinbox, 1,1)
     parent.ica_tol_spinbox.setToolTip(
         "[tol]\n"
         "A positive scalar giving the tolerance"
@@ -317,6 +293,25 @@ def init_ica_algorithm_widgets(parent):
         "The functional form of the G function used in the approximation to neg-entropy:\n"
         "logcosh is default"
         )
+
+    parent.ica_algorithm_dropdown = qtw.QComboBox()
+    parent.ica_algorithm_dropdown.addItems(['parallel', 'deflation'])
+    parent.algorithm_parameters_layout.addWidget(parent.ica_algorithm_dropdown, 2,0)
+    parent.ica_algorithm_dropdown.setToolTip("[algorithm]\n" \
+    "Specify which algorithm to use:\n" \
+    "parallel is default")
+
+    parent.ica_whiten_dropdown = qtw.QComboBox()
+    parent.ica_whiten_dropdown.addItems(['unit-variance', 'arbitrary-variance', 'False'])
+    parent.algorithm_parameters_layout.addWidget(parent.ica_whiten_dropdown, 2,1)
+    parent.ica_whiten_dropdown.setToolTip(
+        "[whiten]\n"
+        "Whitening strategy to use. False means no whitening:\n"
+        "unit-variance (default): the whitening matrix is rescaled"
+        "to ensure each recovered source has unit variance\n"
+        "arbitrary-variance: a whitening with variance arbitrary is used\n"
+        "False: Data is considered whitened and no whitening is performed"
+    )
 
     parent.ica_whiten_solver_dropdown = qtw.QComboBox()
     parent.ica_whiten_solver_dropdown.addItems(['svd', 'eigh'])
@@ -357,7 +352,7 @@ def init_snmf_algorithm_widgets(parent):
     parent.snmf_min_iter_spinbox.setMinimum(0)
     parent.snmf_min_iter_spinbox.setMaximum(999999)
     parent.snmf_min_iter_spinbox.setValue(20)
-    parent.algorithm_parameters_layout.addWidget(parent.snmf_min_iter_spinbox, 2,0)
+    parent.algorithm_parameters_layout.addWidget(parent.snmf_min_iter_spinbox, 1,0)
     parent.snmf_min_iter_spinbox.setToolTip("[min_iter]\n" \
     "Minimum number of iterations before terminating optimzation")
 
@@ -365,14 +360,14 @@ def init_snmf_algorithm_widgets(parent):
     parent.snmf_max_iter_spinbox.setMinimum(1)
     parent.snmf_max_iter_spinbox.setMaximum(999999)
     parent.snmf_max_iter_spinbox.setValue(500)
-    parent.algorithm_parameters_layout.addWidget(parent.snmf_max_iter_spinbox, 2,1)
+    parent.algorithm_parameters_layout.addWidget(parent.snmf_max_iter_spinbox, 1,1)
     parent.snmf_max_iter_spinbox.setToolTip("[max_iter]\n" \
     "Maximum number of iterations before terminating optimzation")
 
     parent.snmf_tol_spinbox = gui_helper.SciSpinBox()
     parent.snmf_tol_spinbox.setMinimum(0)
     parent.snmf_tol_spinbox.setValue(5e-07)
-    parent.algorithm_parameters_layout.addWidget(parent.snmf_tol_spinbox, 2,2)
+    parent.algorithm_parameters_layout.addWidget(parent.snmf_tol_spinbox, 1,2)
     parent.snmf_tol_spinbox.setToolTip("[tol]\n" \
     "Convergence threshold.\n" \
     "Minimum fractional improvment to allow terminating optimization")
@@ -381,7 +376,7 @@ def init_snmf_algorithm_widgets(parent):
     parent.snmf_rho_spinbox.setMinimum(0)
     parent.snmf_rho_spinbox.setValue(0)
     parent.snmf_rho_spinbox.setDecimals(0)
-    parent.algorithm_parameters_layout.addWidget(parent.snmf_rho_spinbox, 3,0)
+    parent.algorithm_parameters_layout.addWidget(parent.snmf_rho_spinbox, 2,0)
     parent.snmf_rho_spinbox.setToolTip(
             "[rho]\n"
         "Stretching factor // Stretching regularization hyperparameter."
@@ -394,7 +389,7 @@ def init_snmf_algorithm_widgets(parent):
     parent.snmf_eta_spinbox.setMinimum(0)
     parent.snmf_eta_spinbox.setValue(0)
     parent.snmf_eta_spinbox.setDecimals(5)
-    parent.algorithm_parameters_layout.addWidget(parent.snmf_eta_spinbox, 3,1)
+    parent.algorithm_parameters_layout.addWidget(parent.snmf_eta_spinbox, 2,1)
     parent.snmf_eta_spinbox.setToolTip(
         "[eta]\n"
         "Sparsity factor. Should be set to zero (default) for non-sparse data such as PDF.\n"
@@ -424,53 +419,27 @@ def init_cnmf_algorithm_widgets(parent):
     parent: QMainWindow
         Window to anchor widgets to
     """
-    parent.fix_components_line = qtw.QLineEdit()
-    parent.fix_components_line.setValidator(
-        qtg.QRegularExpressionValidator(
-            qtc.QRegularExpression("^[01](,[01])*$"), parent.fix_components_line
-        )
-    )
-    parent.fix_components_line.setToolTip(
-        "Enter 1/0 per component to fix/update separated by comma (,)"
-    )
-    parent.algorithm_parameters_layout.addWidget(parent.fix_components_line, 1,0)
-
-    parent.fix_weights_line = qtw.QLineEdit()
-    parent.fix_weights_line.setValidator(
-        qtg.QRegularExpressionValidator(
-            qtc.QRegularExpression("^[01](,[01])*$"), parent.fix_weights_line
-        )
-    )
-    parent.fix_weights_line.setToolTip(
-        "Enter 1/0 per weight to fix/update separated by comma (,)"
-    )
-    parent.algorithm_parameters_layout.addWidget(parent.fix_weights_line, 1,1)
-
     parent.cnmf_max_iter_spinbox = qtw.QSpinBox()
     parent.cnmf_max_iter_spinbox.setMinimum(1)
     parent.cnmf_max_iter_spinbox.setMaximum(999999)
-    parent.cnmf_max_iter_spinbox.setValue(2500)
-    parent.algorithm_parameters_layout.addWidget(parent.cnmf_max_iter_spinbox, 2,0)
+    parent.cnmf_max_iter_spinbox.setValue(200)
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_max_iter_spinbox, 1,0)
     parent.cnmf_max_iter_spinbox.setToolTip("[max_iter]\n" \
     "Maximum number of iterations before timing out")
 
     parent.cnmf_tol_spinbox = gui_helper.SciSpinBox()
     parent.cnmf_tol_spinbox.setMinimum(0)
-    parent.cnmf_tol_spinbox.setValue(1e-4)
-    parent.algorithm_parameters_layout.addWidget(parent.cnmf_tol_spinbox, 2,1)
+    parent.cnmf_tol_spinbox.setValue(1e-5)
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_tol_spinbox, 1,1)
     parent.cnmf_tol_spinbox.setToolTip("[tol]\n" \
     "Tolerance of the stopping condition")
 
-    parent.cnmf_l1_ratio_spinbox = qtw.QDoubleSpinBox()
-    parent.cnmf_l1_ratio_spinbox.setMinimum(0)
-    parent.cnmf_l1_ratio_spinbox.setMaximum(1)
-    parent.cnmf_l1_ratio_spinbox.setValue(0)
-    parent.cnmf_l1_ratio_spinbox.setSingleStep(0.05)
-    parent.algorithm_parameters_layout.addWidget(parent.cnmf_l1_ratio_spinbox, 3,0)
-    parent.cnmf_l1_ratio_spinbox.setToolTip("[l1_ratio]\n" \
-    "Regularization mixing parameter:\n" \
-    "(0, default): elementwise L2 penalty aka. Frobenius Norm\n"
-    "(1): elementwwise L1 penalty (better for sparseness)\n")
+    parent.cnmf_rescale_checkbox = qtw.QCheckBox("Rescale")
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_rescale_checkbox, 1,2)
+    parent.cnmf_rescale_checkbox.setToolTip(
+        "Visually rescales scores to sum to 1 for clarity\n"
+        "Note: This does not affect the exported scores, and does not inversely scale components"
+    )
 
     parent.cnmf_alpha_spinbox = qtw.QDoubleSpinBox()
     parent.cnmf_alpha_spinbox.setMinimum(0)
@@ -478,7 +447,7 @@ def init_cnmf_algorithm_widgets(parent):
     parent.cnmf_alpha_spinbox.setValue(0)
     parent.cnmf_alpha_spinbox.setDecimals(5)
     parent.cnmf_alpha_spinbox.setSingleStep(0.00005)
-    parent.algorithm_parameters_layout.addWidget(parent.cnmf_alpha_spinbox, 3,1)
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_alpha_spinbox, 2,0)
     parent.cnmf_alpha_spinbox.setToolTip(
         "[alpha]\n"
         "Constant that multiplies the l1/l2 regularization (components and weights):\n"
@@ -487,33 +456,193 @@ def init_cnmf_algorithm_widgets(parent):
         "0 (default) means no regularization"
     )
 
+    parent.cnmf_l1_ratio_spinbox = qtw.QDoubleSpinBox()
+    parent.cnmf_l1_ratio_spinbox.setMinimum(0)
+    parent.cnmf_l1_ratio_spinbox.setMaximum(1)
+    parent.cnmf_l1_ratio_spinbox.setValue(0)
+    parent.cnmf_l1_ratio_spinbox.setSingleStep(0.05)
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_l1_ratio_spinbox, 2,1)
+    parent.cnmf_l1_ratio_spinbox.setToolTip("[l1_ratio]\n" \
+    "Regularization mixing parameter:\n" \
+    "(0, default): elementwise L2 penalty aka. Frobenius Norm\n"
+    "(1): elementwwise L1 penalty (better for sparseness)\n")
+
     parent.cnmf_beta_spinbox = qtw.QDoubleSpinBox()
-    parent.algorithm_parameters_layout.addWidget(parent.cnmf_beta_spinbox, 3,2)
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_beta_spinbox, 2,2)
     parent.cnmf_beta_spinbox.setValue(1)
     parent.cnmf_beta_spinbox.setToolTip(
         "[beta]\n"
         "Value for beta divergence:\n"
-        "0: Itakura-Saito\n"
+        "2: Frobenius\n"
         "1 (default): Kullback-Leibler\n"
-        "2: squared Euclidean distance"
+        "0: Itakura-Saito"
     )
 
-    parent.cnmf_rescale_checkbox = qtw.QCheckBox("Rescale")
-    parent.algorithm_parameters_layout.addWidget(parent.cnmf_rescale_checkbox, 2,2)
-    parent.cnmf_rescale_checkbox.setToolTip(
-        "Visually rescales scores to sum to 1 for clarity\n"
-        "Note: This does not affect the exported scores, and does not inversely scale components"
-    )
+    parent.cnmf_fix_components_label = qtw.QLabel("Fix/Fit Components")
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_fix_components_label, 3,0)
 
-    # Ignored NMF parmeters:
-    # random_state
-    # shuffle
+    parent.cnmf_fix_components_line = qtw.QLineEdit()
+    parent.cnmf_fix_components_line.setPlaceholderText("0,1,0,0, ... (up to) components")
+    parent.cnmf_fix_components_line.setValidator(
+        qtg.QRegularExpressionValidator(
+            qtc.QRegularExpression("^[01](,[01])*$"), parent.cnmf_fix_components_line
+        )
+    )
+    parent.cnmf_fix_components_line.setToolTip(
+        "Enter 1/0 per component to fix/update separated by comma (,)"
+    )
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_fix_components_line, 3,1,1,2)
+
+    parent.cnmf_fix_weights_label = qtw.QLabel("Fix/Fit Scores")
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_fix_weights_label, 4,0)
+
+    parent.cnmf_fix_weights_line = qtw.QLineEdit()
+    parent.cnmf_fix_weights_line.setPlaceholderText("0,1,0,0,0,1,1,0, ... (up to) scans")
+    parent.cnmf_fix_weights_line.setValidator(
+        qtg.QRegularExpressionValidator(
+            qtc.QRegularExpression("^[01](,[01])*$"), parent.cnmf_fix_weights_line
+        )
+    )
+    parent.cnmf_fix_weights_line.setToolTip(
+        "Enter 1/0 per score to fix/update separated by comma (,)"
+    )
+    parent.algorithm_parameters_layout.addWidget(parent.cnmf_fix_weights_line, 4,1,1,2)
 
     parent.cnmf_algorithm_widgets = [
-        parent.fix_components_line, parent.fix_weights_line,
         parent.cnmf_max_iter_spinbox, parent.cnmf_tol_spinbox,
+        parent.cnmf_rescale_checkbox, parent.cnmf_alpha_spinbox,
         parent.cnmf_l1_ratio_spinbox, parent.cnmf_beta_spinbox,
-        parent.cnmf_alpha_spinbox, parent.cnmf_rescale_checkbox
+        parent.cnmf_fix_components_label, parent.cnmf_fix_components_line,
+        parent.cnmf_fix_weights_label, parent.cnmf_fix_weights_line
+    ]
+
+def init_mcrals_algorithm_widgets(parent):
+    """
+    Creates and connects widgets for MCR-ALS algorithm parameters
+
+    Parameters
+    ----------
+    parent: QMainWindow
+        Window to anchor widgets to
+    """
+    parent.mcrals_max_iter_spinbox = qtw.QSpinBox()
+    parent.mcrals_max_iter_spinbox.setMinimum(1)
+    parent.mcrals_max_iter_spinbox.setMaximum(999999)
+    parent.mcrals_max_iter_spinbox.setValue(50)
+    parent.algorithm_parameters_layout.addWidget(parent.mcrals_max_iter_spinbox, 1,0)
+    parent.mcrals_max_iter_spinbox.setToolTip("[max_iter]\n"
+    "Maximum number of iterations before timing out")
+
+    parent.mcrals_tol_err_spinbox = gui_helper.SciSpinBox()
+    parent.mcrals_tol_err_spinbox.setMinimum(0)
+    parent.mcrals_tol_err_spinbox.setValue(0)
+    parent.algorithm_parameters_layout.addWidget(parent.mcrals_tol_err_spinbox, 1,1)
+    parent.mcrals_tol_err_spinbox.setToolTip("[tol_err_change]\n"
+    "Tolerance of the stopping condition for change in error per iteration\n"
+    "0 (default) disables this as stopping condition")
+
+    parent.mcrals_init_type_dropdown = qtw.QComboBox()
+    parent.mcrals_init_type_dropdown.addItems(['Components', 'Scores', 'Both'])
+    parent.mcrals_init_type_dropdown.setToolTip(
+        "Inform whether scores, components, or both have been provided"
+    )
+    parent.algorithm_parameters_layout.addWidget(parent.mcrals_init_type_dropdown, 1,2)
+
+    parent.mcrals_tol_n_inc_spinbox = qtw.QSpinBox()
+    parent.mcrals_tol_n_inc_spinbox.setMinimum(-1)
+    parent.mcrals_tol_n_inc_spinbox.setMaximum(999999)
+    parent.mcrals_tol_n_inc_spinbox.setValue(10)
+    parent.algorithm_parameters_layout.addWidget(parent.mcrals_tol_n_inc_spinbox, 2,0)
+    parent.mcrals_tol_n_inc_spinbox.setToolTip("[tol_n_increase]\n"
+    "Maximum number of iterations where the error is allowed to increase\n"
+    "(Set to negative value to disable)")
+
+    parent.mcrals_tol_inc_spinbox = qtw.QDoubleSpinBox()
+    parent.mcrals_tol_inc_spinbox.setMinimum(-1)
+    parent.mcrals_tol_inc_spinbox.setMaximum(100)
+    parent.mcrals_tol_inc_spinbox.setValue(0)
+    parent.mcrals_tol_inc_spinbox.setSingleStep(0.01)
+    parent.algorithm_parameters_layout.addWidget(parent.mcrals_tol_inc_spinbox, 2,1)
+    parent.mcrals_tol_inc_spinbox.setToolTip("[tol_increase]\n"
+    "Factor increase to allow in err attribute.\n"
+    "0 (default) allows no increase\n"
+    "E.g., setting to 1.0 means the err can double per iteration.\n"
+    "(Set to negative value to disable)")
+
+    parent.mcrals_tol_n_abv_min_spinbox = qtw.QSpinBox()
+    parent.mcrals_tol_n_abv_min_spinbox.setMinimum(-1)
+    parent.mcrals_tol_n_abv_min_spinbox.setMaximum(999999)
+    parent.mcrals_tol_n_abv_min_spinbox.setValue(10)
+    parent.algorithm_parameters_layout.addWidget(parent.mcrals_tol_n_abv_min_spinbox, 2,2)
+    parent.mcrals_tol_n_abv_min_spinbox.setToolTip("[tol_n_above_min]\n"
+    "Maximum number of half-iterations without new error minimum\n"
+    "(Set to negative value to disable)")
+
+    parent.mcrals_fix_components_label = qtw.QLabel("Fix Components")
+    parent.algorithm_parameters_layout.addWidget(parent.mcrals_fix_components_label, 4,0)
+
+    parent.mcrals_fix_components_line = qtw.QLineEdit()
+    parent.mcrals_fix_components_line.setPlaceholderText("1,3,4, ...")
+    parent.mcrals_fix_components_line.setValidator(
+        qtg.QRegularExpressionValidator(
+            qtc.QRegularExpression("^[0-9]+(,[0-9]+)*$"), parent.mcrals_fix_components_line
+        )
+    )
+    parent.mcrals_fix_components_line.setToolTip("[st_fix]\n"
+        "Enter provided component to fix separated by comma (,)"
+    )
+    parent.algorithm_parameters_layout.addWidget(parent.mcrals_fix_components_line, 4,1,1,2)
+
+    parent.mcrals_fix_weights_label = qtw.QLabel("Fix Scores")
+    parent.algorithm_parameters_layout.addWidget(parent.mcrals_fix_weights_label, 5,0)
+
+    parent.mcrals_fix_weights_line = qtw.QLineEdit()
+    parent.mcrals_fix_weights_line.setDisabled(True)
+    parent.mcrals_fix_weights_line.setPlaceholderText("1,3,4, ...")
+    parent.mcrals_fix_weights_line.setValidator(
+        qtg.QRegularExpressionValidator(
+            qtc.QRegularExpression("^[0-9]+(,[0-9]+)*$"), parent.mcrals_fix_weights_line
+        )
+    )
+    parent.mcrals_fix_weights_line.setToolTip("[c_fix]\n"
+        "Enter component to fix in provided scores separated by comma (,)"
+    )
+    parent.algorithm_parameters_layout.addWidget(parent.mcrals_fix_weights_line, 5,1,1,2)
+
+    parent.mcrals_init_type_dropdown.currentTextChanged.connect(
+        lambda text: (
+            parent.mcrals_fix_components_line.setEnabled(True),
+            parent.mcrals_fix_weights_line.setEnabled(False)
+        ) if text=="Components" else (
+            (
+                parent.mcrals_fix_components_line.setEnabled(False),
+                parent.mcrals_fix_weights_line.setEnabled(True)
+            ) if text=="Scores" else (
+                parent.mcrals_fix_components_line.setEnabled(True),
+                parent.mcrals_fix_weights_line.setEnabled(True)
+            )
+        )
+    )
+
+    # Ignored MCR-ALS parameters:
+    # c_regr
+    # st_regr
+    # c_fit_kwargs
+    # st_fit_kwargs
+    # c_constraints
+    # st_constraints
+    # err_fcn
+    #
+    # c_first
+    # post_iter_fcn
+    # post_half_fcn
+
+    parent.mcrals_algorithm_widgets = [
+        parent.mcrals_max_iter_spinbox, parent.mcrals_tol_err_spinbox,
+        parent.mcrals_init_type_dropdown, parent.mcrals_tol_n_inc_spinbox,
+        parent.mcrals_tol_inc_spinbox, parent.mcrals_tol_n_abv_min_spinbox,
+        parent.mcrals_fix_components_label, parent.mcrals_fix_components_line,
+        parent.mcrals_fix_weights_label, parent.mcrals_fix_weights_line
     ]
 
 
@@ -531,7 +660,8 @@ def display_algorithm_widgets(parent):
         parent.nmf_algorithm_widgets +
         parent.ica_algorithm_widgets +
         parent.snmf_algorithm_widgets +
-        parent.cnmf_algorithm_widgets
+        parent.cnmf_algorithm_widgets +
+        parent.mcrals_algorithm_widgets
     ):
         widget.hide()
 
@@ -542,6 +672,7 @@ def display_algorithm_widgets(parent):
     parent.exp_win_checkbox.setChecked(False)
     parent.exp_win_checkbox.hide()
     parent.init_guess_checkbox.setChecked(False)
+    parent.init_guess_checkbox.setDisabled(False)
     parent.init_guess_checkbox.hide()
 
     match parent.algorithm_group.checkedButton().text():
@@ -579,4 +710,11 @@ def display_algorithm_widgets(parent):
         case "CNMF":
             parent.init_guess_checkbox.show()
             for widget in parent.cnmf_algorithm_widgets:
+                widget.show()
+        case "MCR-ALS":
+            parent.verbose_checkbox.show()
+            parent.init_guess_checkbox.show()
+            parent.init_guess_checkbox.setChecked(True)
+            parent.init_guess_checkbox.setDisabled(True)
+            for widget in parent.mcrals_algorithm_widgets:
                 widget.show()
