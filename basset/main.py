@@ -254,9 +254,9 @@ class MainWindow(qtw.QMainWindow):
         )
         self.add_options_layout.addWidget(self.add_options_label, 0,0,1,3)
 
-        ######################
-        ##### Background #####
-        ######################
+        ############################
+        ##### Calculate errors #####
+        ############################
         self.calc_err_checkbox = qtw.QCheckBox("Calculate Errors")
         self.calc_err_checkbox.setChecked(True)
         self.calc_err_checkbox.setToolTip(
@@ -1425,10 +1425,7 @@ class MainWindow(qtw.QMainWindow):
             ax_scores = fig.add_subplot(gs[2,0:(comp_num // 2)+1])
             ax_errors = fig.add_subplot(gs[2,(comp_num // 2)+1:])
 
-        if (
-            self.nmf_rescale_checkbox.isChecked()
-            and self.algorithm_group.checkedButton().text()=="NMF"
-        ):
+        if self.nmf_rescale_checkbox.isChecked() or self.cnmf_rescale_checkbox.isChecked():
             print("Rescaling scores for plot visual")
             row_sums = np.sum(transformed, axis=1, keepdims=True) # Sums scores per sample
             transformed = transformed / row_sums # Rescales scores so they sum to one per sample

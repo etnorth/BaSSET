@@ -560,7 +560,6 @@ def display_algorithm_widgets(parent):
             parent.verbose_checkbox.show()
             parent.exp_win_checkbox.show()
             parent.init_guess_checkbox.show()
-            parent.init_guess_checkbox.setEnabled(True)
             for widget in parent.nmf_algorithm_widgets:
                 widget.show()
             if parent.nmf_solver_dropdown.currentText()=='mu':
@@ -579,7 +578,5 @@ def display_algorithm_widgets(parent):
                 widget.show()
         case "CNMF":
             parent.init_guess_checkbox.show()
-            parent.init_guess_checkbox.setChecked(True)
-            parent.init_guess_checkbox.setDisabled(True)
             for widget in parent.cnmf_algorithm_widgets:
                 widget.show()

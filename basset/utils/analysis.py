@@ -372,6 +372,21 @@ def CNMF_analysis(intensities, comp_num, *,
         intensities -= lift_factor
         print("\tNegative value found in dataset. Lifting data above zero")
 
+    if len(H_fix) > comp_num:
+        print(
+            f"\tH_fix contains more values ({len(H_fix)}) "
+            f"than components ({comp_num}) to analyze."
+            f"Cropping to {comp_num} components"
+        )
+        H_fix = H_fix[:comp_num]
+    if len(W_fix) > len(intensities):
+        print(
+            f"\tW_fix contains more values ({len(W_fix)}) "
+            f"than scans ({len(intensities)}) to analyze. "
+            f"Cropping to {len(intensities)} scans"
+        )
+        W_fix = W_fix[:len(intensities)]
+
     if H is not None:
         if lift_factor < 0:
             H -= lift_factor
