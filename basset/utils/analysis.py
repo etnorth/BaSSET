@@ -389,8 +389,6 @@ def CNMF_analysis(intensities, comp_num, *,
     max_iter,
     alpha,
     l1_ratio,
-    calc_err,
-    exp_win,
     W,
     W_fix,
     H,
@@ -400,8 +398,6 @@ def CNMF_analysis(intensities, comp_num, *,
     Calls on the constrained NMF algorithm and performs a fit to the user's dataset
     If data contains negative values, lifts them
     """
-    errors = None
-
     if len(H_fix) > comp_num:
         print(
             f"\tH_fix contains more values ({len(H_fix)}) "
@@ -428,11 +424,7 @@ def CNMF_analysis(intensities, comp_num, *,
         H = [torch.tensor(component[None, :], dtype=torch.float) for component in H]
     if W is not None:
         W = [torch.tensor(score[None, :], dtype=torch.float) for score in W]
-    """if calc_err:
-        pass
-    elif exp_win['enable']:
-        pass
-    else:"""
+
     cnmf_model = CNMF(
         intensities.shape,
         n_components=comp_num,
@@ -462,7 +454,7 @@ def CNMF_analysis(intensities, comp_num, *,
         components += lift_factor
         reconstructed += lift_factor
 
-    return ComponentsResult(components), weights, reconstructed, errors, lift_factor
+    return ComponentsResult(components), weights, reconstructed, lift_factor
 
 def MCRALS_analysis(intensities, comp_num, *,
     C,
@@ -482,19 +474,17 @@ def MCRALS_analysis(intensities, comp_num, *,
     tol_n_increase,
     tol_err_change,
     tol_n_above_min,
-    init_type,
+    init_fcn=None, # Custom: Provides initial guess if not user-provided
     verbose=False
 ):
     """
     Calls on the MCR-ALS algorithm and performs a fit to the user's dataset
     """
-    errors = None
-
     if verbose:
         logger = logging.getLogger('pymcr')
         logger.setLevel(logging.DEBUG)
         stdout_handler = logging.StreamHandler(stream=sys.stdout)
-        stdout_format = logging.Formatter('%(message)s')
+        stdout_format = logging.Formatter('\t%(message)s')
         stdout_handler.setFormatter(stdout_format)
         logger.addHandler(stdout_handler)
     if tol_increase<0:
@@ -509,67 +499,73 @@ def MCRALS_analysis(intensities, comp_num, *,
         intensities -= lift_factor
         print("\tNegative value found in dataset. Lifting data above zero")
 
-    C_expand = np.random.rand(intensities.shape[0],comp_num) # (samples, components)
-    ST_expand = np.random.rand(comp_num,intensities.shape[1]) # (components, features)
-
-    # Expand scores
-    if C is None:
-        C = C_expand
-    else:
-        if C.shape[0] < intensities.shape[0]: # Expand samples in guessed scores
-            print(
-                f"\tFewer sample scores than {intensities.shape[0]} were provided. "
-                "Expanding with random"
-            )
-            C_vcrop = C_expand[C.shape[0]:,:]
-            C = np.vstack([C, C_vcrop])
-        if C.shape[1] < comp_num: # Expand components in guessed scores
-            print(f"\tFewer components than {comp_num} were provided. Expanding with random")
-            C_hcrop = C_expand[:,C.shape[1]:]
-            C = np.hstack([C, C_hcrop])
-        elif C.shape[1] > comp_num:
-            raise ValueError(
-                f"Analysis to be done with {comp_num} components, "
-                f"but scores provided {C.shape[1]}"
-            )
-
-    # Expand components
-    if ST is None:
-        ST = ST_expand
-    else:
-        if lift_factor < 0:
+    # Error handling for fixing initial guesses
+    if ST is not None and C is None: # If only components are provided
+        if lift_factor < 0: # Lift user-provided scores if needed
             ST -= lift_factor
-        if ST.shape[0] < comp_num: # Expand components in guessed components
-            print(f"\tFewer components than {comp_num} were provided. Expanding with random")
-            ST_vcrop = ST_expand[ST.shape[0]:,:]
-            ST = np.vstack([ST, ST_vcrop])
-        elif ST.shape[0] > comp_num:
-            raise ValueError(
-                f"Analysis to be done with {comp_num} components, "
-                f"but {ST.shape[0]} were provided"
-            )
+        if c_fix is not None:
+            raise ValueError("When providing only components, you cannot fix scores")
+        if (
+            st_fix is not None
+            and len(st_fix) > ST.shape[0]
+        ):
+            raise ValueError(f"More components fixed ({len(st_fix)}) than provided ({ST.shape[0]})")
+    elif C is not None and ST is None: # If only scores are provided
+        if st_fix is not None:
+            raise ValueError("When providing only scores, you cannot fix components")
+        if (
+            c_fix is not None
+            and len(c_fix) > C.shape[1]
+        ):
+            raise ValueError(f"More components fixed ({len(c_fix)}) than provided ({C.shape[1]})")
+    elif (
+        (ST is not None and C is not None) # If both are provided
+        and ((st_fix is None) or (c_fix is None))
+    ):
+        raise ValueError(
+            "Both \"Fix Components\" and \"Fix Scores\" must be provided "
+            "when initial guess contains for components and scores"
+        )
 
-    # Set to None depending on given data
-    match init_type:
-        case "Components":
-            C = None
-            c_fix = None
-        case "Scores":
-            ST = None
-            st_fix = None
-        case "Both":
-            if (st_fix is None) or (c_fix is None):
-                raise ValueError(
-                    "Both \"Fix Components\" and \"Fix Scores\" must be provided for \"Both\""
-                )
+    C_expand, ST_expand = _initialize_nmf( # Create full-sized C and ST for expanding
+        intensities,
+        comp_num,
+        init=init_fcn
+    )
 
-    if c_fix is not None:
-        if len(c_fix) < intensities.shape[0]: # Fill with up to samples
-            c_fix.extend([0] * (intensities.shape[0]-len(c_fix)))
+    # Expand scores if too small
+    if ( # Expand samples dimension
+        C is not None
+        and C.shape[0] < intensities.shape[0]
+    ):
+        print(
+            f"\tFewer sample scores than {intensities.shape[0]} were provided. "
+            f"Expanding with NMF guess using {init_fcn}"
+        )
+        C_vcrop = C_expand[C.shape[0]:,:]
+        C = np.vstack([C, C_vcrop])
+    if ( # Expand components dimension
+        C is not None
+        and C.shape[1] < comp_num
+    ):
+        print(
+            f"\tFewer than {comp_num} components were described in scores. "
+            f"Expanding with NMF guess using {init_fcn}"
+        )
+        C_hcrop = C_expand[:,C.shape[1]:]
+        C = np.hstack([C, C_hcrop])
 
-    if st_fix is not None:
-        if len(st_fix) < comp_num: # Fill with zero up to comp_num
-            st_fix.extend([0] * (comp_num-len(st_fix)))
+    # Expand components if too small
+    if (# Expand components dimension
+         ST is not None
+         and ST.shape[0] < comp_num
+    ):
+        print(
+            f"\tFewer than {comp_num} components were provided. "
+            f"Expanding with NMF guess using {init_fcn}"
+        )
+        ST_vcrop = ST_expand[ST.shape[0]:,:]
+        ST = np.vstack([ST, ST_vcrop])
 
     mcrals_model = McrAR(
         #c_regr,
@@ -611,4 +607,4 @@ def MCRALS_analysis(intensities, comp_num, *,
         mcrals_model.ST_ += lift_factor # components
         reconstructed += lift_factor
 
-    return mcrals_model, transformed, reconstructed, errors, lift_factor
+    return mcrals_model, transformed, reconstructed, lift_factor

@@ -488,6 +488,7 @@ def init_cnmf_algorithm_widgets(parent):
             qtc.QRegularExpression("^[01](,[01])*$"), parent.cnmf_fix_components_line
         )
     )
+
     parent.cnmf_fix_components_line.setToolTip(
         "Enter 1/0 per component to fix/update separated by comma (,)"
     )
@@ -541,32 +542,39 @@ def init_mcrals_algorithm_widgets(parent):
     "Tolerance of the stopping condition for change in error per iteration\n"
     "0 (default) disables this as stopping condition")
 
-    parent.mcrals_init_type_dropdown = qtw.QComboBox()
-    parent.mcrals_init_type_dropdown.addItems(['Components', 'Scores', 'Both'])
-    parent.mcrals_init_type_dropdown.setToolTip(
-        "Inform whether scores, components, or both have been provided"
-    )
-    parent.algorithm_parameters_layout.addWidget(parent.mcrals_init_type_dropdown, 1,2)
-
-    parent.mcrals_tol_n_inc_spinbox = qtw.QSpinBox()
-    parent.mcrals_tol_n_inc_spinbox.setMinimum(-1)
-    parent.mcrals_tol_n_inc_spinbox.setMaximum(999999)
-    parent.mcrals_tol_n_inc_spinbox.setValue(10)
-    parent.algorithm_parameters_layout.addWidget(parent.mcrals_tol_n_inc_spinbox, 2,0)
-    parent.mcrals_tol_n_inc_spinbox.setToolTip("[tol_n_increase]\n"
-    "Maximum number of iterations where the error is allowed to increase\n"
-    "(Set to negative value to disable)")
-
     parent.mcrals_tol_inc_spinbox = qtw.QDoubleSpinBox()
     parent.mcrals_tol_inc_spinbox.setMinimum(-1)
     parent.mcrals_tol_inc_spinbox.setMaximum(100)
     parent.mcrals_tol_inc_spinbox.setValue(0)
     parent.mcrals_tol_inc_spinbox.setSingleStep(0.01)
-    parent.algorithm_parameters_layout.addWidget(parent.mcrals_tol_inc_spinbox, 2,1)
+    parent.algorithm_parameters_layout.addWidget(parent.mcrals_tol_inc_spinbox, 1,2)
     parent.mcrals_tol_inc_spinbox.setToolTip("[tol_increase]\n"
     "Factor increase to allow in err attribute.\n"
     "0 (default) allows no increase\n"
     "E.g., setting to 1.0 means the err can double per iteration.\n"
+    "(Set to negative value to disable)")
+
+    parent.mcrals_init_fcn_dropdown = qtw.QComboBox()
+    parent.mcrals_init_fcn_dropdown.addItems(["nndsvda", "random", "nndsvd", "nndsvdar"])
+    parent.mcrals_init_fcn_dropdown.setToolTip(
+        "If components or scores are missing,"
+        "use the following NMF initialization method as initial guess:\n"
+        "('nndsvda' is recommended for PDF and 'nndsvd' is recommended for XRD)\n"
+        "nndsvda (default): Better when sparsity is not desired (PDF)\n"
+        "random: Random non-negative matrices\n"
+        "nndsvd: Non-negative Double Singular Value Decomposition (better for sparseness) (XRD)\n"
+        "nndsvdar: Faster, less accurate alternative to NNDSVDa when sparsity is not desired"
+    )
+    parent.algorithm_parameters_layout.addWidget(parent.mcrals_init_fcn_dropdown, 2,0)
+
+
+    parent.mcrals_tol_n_inc_spinbox = qtw.QSpinBox()
+    parent.mcrals_tol_n_inc_spinbox.setMinimum(-1)
+    parent.mcrals_tol_n_inc_spinbox.setMaximum(999999)
+    parent.mcrals_tol_n_inc_spinbox.setValue(10)
+    parent.algorithm_parameters_layout.addWidget(parent.mcrals_tol_n_inc_spinbox, 2,1)
+    parent.mcrals_tol_n_inc_spinbox.setToolTip("[tol_n_increase]\n"
+    "Maximum number of iterations where the error is allowed to increase\n"
     "(Set to negative value to disable)")
 
     parent.mcrals_tol_n_abv_min_spinbox = qtw.QSpinBox()
@@ -589,7 +597,7 @@ def init_mcrals_algorithm_widgets(parent):
         )
     )
     parent.mcrals_fix_components_line.setToolTip("[st_fix]\n"
-        "Enter provided component to fix separated by comma (,)"
+        "Enter provided component to fix features of separated by comma (,)"
     )
     parent.algorithm_parameters_layout.addWidget(parent.mcrals_fix_components_line, 4,1,1,2)
 
@@ -597,7 +605,6 @@ def init_mcrals_algorithm_widgets(parent):
     parent.algorithm_parameters_layout.addWidget(parent.mcrals_fix_weights_label, 5,0)
 
     parent.mcrals_fix_weights_line = qtw.QLineEdit()
-    parent.mcrals_fix_weights_line.setDisabled(True)
     parent.mcrals_fix_weights_line.setPlaceholderText("1,3,4, ...")
     parent.mcrals_fix_weights_line.setValidator(
         qtg.QRegularExpressionValidator(
@@ -608,21 +615,6 @@ def init_mcrals_algorithm_widgets(parent):
         "Enter component to fix in provided scores separated by comma (,)"
     )
     parent.algorithm_parameters_layout.addWidget(parent.mcrals_fix_weights_line, 5,1,1,2)
-
-    parent.mcrals_init_type_dropdown.currentTextChanged.connect(
-        lambda text: (
-            parent.mcrals_fix_components_line.setEnabled(True),
-            parent.mcrals_fix_weights_line.setEnabled(False)
-        ) if text=="Components" else (
-            (
-                parent.mcrals_fix_components_line.setEnabled(False),
-                parent.mcrals_fix_weights_line.setEnabled(True)
-            ) if text=="Scores" else (
-                parent.mcrals_fix_components_line.setEnabled(True),
-                parent.mcrals_fix_weights_line.setEnabled(True)
-            )
-        )
-    )
 
     # Ignored MCR-ALS parameters:
     # c_regr
@@ -639,8 +631,8 @@ def init_mcrals_algorithm_widgets(parent):
 
     parent.mcrals_algorithm_widgets = [
         parent.mcrals_max_iter_spinbox, parent.mcrals_tol_err_spinbox,
-        parent.mcrals_init_type_dropdown, parent.mcrals_tol_n_inc_spinbox,
-        parent.mcrals_tol_inc_spinbox, parent.mcrals_tol_n_abv_min_spinbox,
+        parent.mcrals_tol_inc_spinbox, parent.mcrals_init_fcn_dropdown,
+        parent.mcrals_tol_n_inc_spinbox, parent.mcrals_tol_n_abv_min_spinbox,
         parent.mcrals_fix_components_label, parent.mcrals_fix_components_line,
         parent.mcrals_fix_weights_label, parent.mcrals_fix_weights_line
     ]

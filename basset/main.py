@@ -1195,6 +1195,24 @@ class MainWindow(qtw.QMainWindow):
                         f"Expected {intensities.shape[1]} data points in guessed components, "
                         f"but got {init_components.shape[1]}"
                     )
+                elif (
+                    init_components is not None
+                    and init_components.shape[0] > self.comp_num_slider.value()
+                ):
+                    raise ValueError(
+                        f"Analysis to be done with {self.comp_num_slider.value()} components, "
+                        f"but {init_components.shape[0]} were provided. "
+                        f"Please provide less than or equal to {self.comp_num_slider.value()}"
+                    )
+                if (
+                    init_scores is not None
+                    and init_scores.shape[1] > self.comp_num_slider.value()
+                ):
+                    raise ValueError(
+                        f"Analysis to be done with {self.comp_num_slider.value()} components, "
+                        f"but scores provided {init_scores.shape[1]}. "
+                        f"Please provide less than or equal to {self.comp_num_slider.value()}"
+                    )
             except (FileNotFoundError, ValueError, IOError) as e:
                 qtw.QMessageBox.critical(
                     self,
@@ -1320,7 +1338,7 @@ class MainWindow(qtw.QMainWindow):
                         verbose=self.verbose_checkbox.isChecked()
                     )
                 case "CNMF":
-                    fitted, transformed, reconstructed, errors,lift_factor = analysis.CNMF_analysis(
+                    fitted, transformed, reconstructed, lift_factor = analysis.CNMF_analysis(
                         intensities,
                         comp_num=self.comp_num_slider.value(),
                         beta=self.cnmf_beta_spinbox.value(),
@@ -1328,22 +1346,6 @@ class MainWindow(qtw.QMainWindow):
                         max_iter=self.cnmf_max_iter_spinbox.value(),
                         alpha=self.cnmf_alpha_spinbox.value(),
                         l1_ratio=self.cnmf_l1_ratio_spinbox.value(),
-                        calc_err=self.calc_err_checkbox.isChecked(),
-                        exp_win={
-                            'enable': self.exp_win_checkbox.isChecked(),
-                            'do_custom': self.exp_win_custom_checkbox.isChecked(),
-                            'num_win': self.exp_win_num_spinbox.value(),
-                            'comps': np.fromstring(
-                                self.exp_win_comps_line.text(),
-                                dtype=int,
-                                sep=','
-                            ),
-                            'win_custom': np.fromstring(
-                                self.exp_win_custom_line.text(),
-                                dtype=int,
-                                sep=','
-                            )
-                        },
                         W = init_scores,
                         W_fix=list(np.fromstring(
                             self.cnmf_fix_weights_line.text(),
@@ -1358,7 +1360,7 @@ class MainWindow(qtw.QMainWindow):
                         )) if self.cnmf_fix_components_line.text() else []
                     )
                 case "MCR-ALS":
-                    fitted, transformed,reconstructed,errors,lift_factor = analysis.MCRALS_analysis(
+                    fitted, transformed,reconstructed,lift_factor = analysis.MCRALS_analysis(
                         intensities,
                         comp_num=self.comp_num_slider.value(),
                         C = init_scores,
@@ -1378,7 +1380,7 @@ class MainWindow(qtw.QMainWindow):
                         tol_n_increase=self.mcrals_tol_n_inc_spinbox.value(),
                         tol_err_change=self.mcrals_tol_err_spinbox.value(),
                         tol_n_above_min=self.mcrals_tol_n_abv_min_spinbox.value(),
-                        init_type=self.mcrals_init_type_dropdown.currentText(),
+                        init_fcn=self.mcrals_init_fcn_dropdown.currentText(),
                         verbose=self.verbose_checkbox.isChecked()
                     )
         except ValueError as e:
@@ -1626,7 +1628,13 @@ class MainWindow(qtw.QMainWindow):
                     "before subsequent lowering\n"
                 )
 
-            outfile.write("The following algorithm parameters where used:\n")
+            if self.init_guess_checkbox.isChecked():
+                outfile.write(
+                    "An initial guess of components and/or scores were loaded from "
+                    f"\"...{self.init_guess_label.text()[-51:]}\"\n"
+                )
+
+            outfile.write("\nThe following algorithm parameters where used:\n")
             match self.algorithm_group.checkedButton().text():
                 case "PCA":
                     outfile.write(f"\tWhiten: {self.pca_whiten_checkbox.isChecked()}\n")
@@ -1715,15 +1723,72 @@ class MainWindow(qtw.QMainWindow):
                         "not multiplication (component / stretch) !"
                     )
                 case "CNMF":
-                    pass
+                    outfile.write(
+                        "\tMaximum number of iterations: "
+                        f"{self.cnmf_max_iter_spinbox.value()}\n"
+                    )
+                    outfile.write(f"\tTolerance: {self.cnmf_tol_spinbox.value()}\n")
+                    outfile.write(
+                        "\tRegularization constant (alpha): "
+                        f"{self.cnmf_alpha_spinbox.value()}\n"
+                    )
+                    outfile.write(
+                        "\tRegularization mixing parameter (0=l2, 1=l1): "
+                        f"{self.cnmf_l1_ratio_spinbox.value()}\n"
+                    )
+                    outfile.write(
+                        "\tValue for beta divergence to minimize: "
+                        f"{self.cnmf_beta_spinbox.value()}\n"
+                    )
+                    outfile.write(
+                        "\tFix/fit component instruction: "
+                        f"{self.cnmf_fix_components_line.text()}\n"
+                    )
+                    outfile.write(
+                        "\tFix/fit scores instruction: "
+                        f"{self.cnmf_fix_weights_line.text()}\n"
+                    )
                 case "MCR-ALS":
-                    pass
+                    outfile.write(
+                        "\tMaximum number of iterations: "
+                        f"{self.mcrals_max_iter_spinbox.value()}\n"
+                    )
+                    outfile.write(
+                        "\tTolerance for error change: "
+                        f"{self.mcrals_tol_err_spinbox.value()}\n"
+                    )
+                    outfile.write(
+                        "\tFactor tolerance can increase by: "
+                        f"{self.mcrals_tol_inc_spinbox.value()}\n"
+                    )
+                    outfile.write(
+                        "\tNMf initialization for non-provided initial guesses: "
+                        f"{self.mcrals_init_fcn_dropdown.currentText()}\n"
+                    )
+                    outfile.write(
+                        "\tMaximum number of iterations tolerance is allowed to increase: "
+                        f"{self.mcrals_tol_n_inc_spinbox.value()}\n"
+                    )
+                    outfile.write(
+                        "\tMaximum number of half-iterations without new error minimum: "
+                        f"{self.mcrals_tol_n_abv_min_spinbox.value()}\n"
+                    )
+                    outfile.write(
+                        ("\tComponents to fix features of: "
+                        f"{self.mcrals_fix_components_line.text()}\n")
+                        if self.mcrals_fix_components_line.text() else ""
+                    )
+                    outfile.write(
+                        ("\tComponents to fix scores of: "
+                        f"{self.mcrals_fix_weights_line.text()}\n")
+                        if self.mcrals_fix_weights_line.text() else ""
+                    )
 
             if errors is not None:
                 outfile.write(
-                    "\nThe NMF reconstruction error for "
+                    f"\nThe {self.algorithm_group.checkedButton().text()} calculated error for "
                     f"{self.comp_num_slider.value()} components was: "
-                    f"{errors[self.comp_num_slider.value()+1]:.2f}\n"
+                    f"{errors[self.comp_num_slider.value()+1]:.6e}\n"
                 )
 
             outfile.write("\nPerformed using BaSSET v1.6.0a")

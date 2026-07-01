@@ -28,7 +28,7 @@ def most_common_filetype(indir: str, verbose=True):
         Most common filetype in directory
     """
     if len(glob(f"{indir}*")) == 0:
-        print(f"\tFound {len(glob(f"{indir}*"))} files in \"{indir[-41:-1]}\"")
+        print(f"\tFound {len(glob(f"{indir}*"))} files in \"...{indir[-51:]}\"")
         return None
     filetypes = {}
     for file_extension in [os.path.splitext(filename)[-1] for filename in glob(f"{indir}*")]:
@@ -42,7 +42,7 @@ def most_common_filetype(indir: str, verbose=True):
     popular_filetypes = [key for key, value in filetypes.items() if value == filetypes[filetype]]
     popular_filetypes = [x for x in popular_filetypes if x] # Removes empty strings (aka. folders)
     if len(popular_filetypes)==0:
-        print(f"\t\"{indir[-41:-1]}\" does not contain any files")
+        print(f"\t\"...{indir[-51:]}\" does not contain any files")
         return None
     elif len(popular_filetypes)>1:
         print(
@@ -137,16 +137,16 @@ def import_dataset(indir: str):
         2D array of shape (samples, features) containing intensity for each given angle in dataset
     """
     print("Importing dataset")
-    
+
     if not os.path.isdir(indir):
         raise FileNotFoundError(f"\"{indir}\" is not an existing directory")
-    
+
     if not indir.endswith(os.path.sep):
         indir += os.path.sep
 
     filetype = most_common_filetype(indir)
 
-    print(f"\tLooking for files in \"...{indir[-41:-1]}\" of type {filetype}")
+    print(f"\tLooking for files in \"...{indir[-51:]}\" of type {filetype}")
     filenames = natsorted(glob(f"{indir}*{filetype}"))
     print(f"\tFound {len(filenames)} files of filetype {filetype}")
 
@@ -213,7 +213,7 @@ def import_init_guess(indir: str):
 
     filetype = most_common_filetype(indir)
 
-    print(f"\tLooking for component files in \"...{indir[-41:-1]}\" of type \"{filetype}\"")
+    print(f"\tLooking for component files in \"...{indir[-51:]}\" of type \"{filetype}\"")
     filenames = natsorted(glob(f"{indir}*{filetype}"))
     print(f"\tFound {len(filenames)} files of filetype \"{filetype}\"")
 
